@@ -1,6 +1,17 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://github.com/vercel/next.js/tree/canary/packages/create-next-app).
+# BeatsSurround 🎵
 
-## Getting Started
+A modern multi-device audio synchronization web application built with Next.js, inspired by BeatSync. Experience real-time collaborative music playback with spatial audio positioning across multiple devices.
+
+## ✨ Features
+
+- **🎶 Multi-Device Audio Sync**: High-precision audio playback synchronization across connected devices
+- **🎯 Spatial Audio**: Interactive 2D positioning system with draggable listening sources
+- **📱 Real-Time Collaboration**: Room-based system for multiple users to join and control music
+- **🎵 Interactive Music Queue**: Drag & drop file uploads with animated track selection
+- **🎨 Modern Dark UI**: Beautiful, responsive interface with smooth animations
+- **⚡ Fast & Responsive**: Built with Next.js 15 and optimized for performance
+
+## 🚀 Quick Start
 
 First, run the development server:
 
@@ -16,21 +27,37 @@ bun dev
 
 Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
 
-You can start editing the page by modifying `app/page.js`. The page auto-updates as you edit the file.
+## 🛠️ Tech Stack
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+- **Framework**: Next.js 15 with App Router
+- **Styling**: Tailwind CSS
+- **State Management**: Zustand
+- **Animations**: Framer Motion
+- **Audio**: Web Audio API
+- **Icons**: Lucide React
+- **Notifications**: Sonner
 
-## Learn More
+## 🎵 How to Use
 
-To learn more about Next.js, take a look at the following resources:
+### 1. **Start a Session**
+- The app automatically generates a unique room ID
+- Share the room ID with others to join your session
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+### 2. **Upload Music**
+- Drag & drop audio files into the upload area
+- Supported formats: MP3, WAV, M4A, and other common audio formats
+- Files are processed locally using the Web Audio API
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+### 3. **Control Playback**
+- Use the central player controls to play, pause, and seek
+- Skip between tracks or enable shuffle mode
+- All controls are synchronized across connected devices
 
-## Deploy on Vercel
+### 4. **Spatial Audio**
+- Toggle spatial audio in the right panel
+- Drag the listening source position to change audio perspective
+- Watch as connected users appear as dots on the 2D grid
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+---
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+**Enjoy your synchronized music experience! 🎵**
