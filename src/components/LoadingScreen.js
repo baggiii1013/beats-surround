@@ -28,7 +28,7 @@ export default function LoadingScreen() {
       if (isInitingSystem && audioSources.length === 0) {
         setShowError(true);
       }
-    }, 8000); // 8 second timeout
+    }, 15000); // Increased timeout to 15 seconds for loading FLAC files
 
     return () => clearTimeout(timeout);
   }, [isInitingSystem, audioSources]);
@@ -60,7 +60,6 @@ export default function LoadingScreen() {
   };
 
   const handleForceSkip = () => {
-    console.log('Force skipping initialization');
     useGlobalStore.setState({ isInitingSystem: false, audioSources: [] });
   };
 
@@ -127,10 +126,17 @@ export default function LoadingScreen() {
           </div>
         ) : (
           <div>
-            <p className="text-gray-400 text-sm mb-4">Initializing audio system...</p>
+            <p className="text-gray-400 text-sm mb-4">
+              {audioSources.length > 0 
+                ? 'Finalizing audio setup...' 
+                : 'Loading demo audio files...'
+              }
+            </p>
             <div className="flex items-center justify-center gap-2">
               <Loader2 className="w-4 h-4 text-blue-400 animate-spin" />
-              <span className="text-blue-400 text-sm">Loading</span>
+              <span className="text-blue-400 text-sm">
+                {audioSources.length > 0 ? 'Almost ready' : 'Loading'}
+              </span>
             </div>
           </div>
         )}

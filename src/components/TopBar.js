@@ -27,7 +27,6 @@ export default function TopBar() {
   const handleNewRoom = () => {
     const newRoomId = generateNewRoomId();
     resetStore();
-    console.log('Created new room:', newRoomId);
   };
 
   const handleCopyRoomId = () => {

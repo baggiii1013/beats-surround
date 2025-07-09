@@ -17,12 +17,9 @@ export default function Home() {
   const audioSources = useGlobalStore((state) => state.audioSources);
   const initializeAudio = useGlobalStore((state) => state.initializeAudio);
   
-  console.log('Home component render - isInitingSystem:', isInitingSystem, 'audioSources.length:', audioSources.length);
-  
   // If no audio sources and not initializing, start initialization
   useEffect(() => {
     if (!isInitingSystem && audioSources.length === 0) {
-      console.log('Home: Starting audio initialization');
       useGlobalStore.setState({ isInitingSystem: true });
       // Add a small delay to ensure state update is processed
       setTimeout(() => {
@@ -34,7 +31,6 @@ export default function Home() {
   // Force exit initialization if we have audio sources but are still initializing
   useEffect(() => {
     if (isInitingSystem && audioSources.length > 0) {
-      console.log('Home: Audio sources loaded, stopping initialization');
       useGlobalStore.setState({ isInitingSystem: false });
     }
   }, [isInitingSystem, audioSources.length]);

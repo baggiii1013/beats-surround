@@ -17,19 +17,13 @@ export default function AudioInitializer() {
   useEffect(() => {
     if (!mounted) return; // Don't run on server side
     
-    console.log('AudioInitializer: Client-side initialization check');
-    console.log('  isInitingSystem:', isInitingSystem);
-    console.log('  audioSources.length:', audioSources.length);
-    
     // Only initialize if we're still in the init state and have no audio sources
     if (isInitingSystem && audioSources.length === 0) {
-      console.log('AudioInitializer: Starting audio initialization');
       
       // Use a very short timeout to ensure the component is fully mounted
       const timeoutId = setTimeout(() => {
-        console.log('AudioInitializer: Calling initializeAudio');
         initializeAudio().catch(error => {
-          console.error('AudioInitializer: initializeAudio failed:', error);
+          // Audio initialization failed
         });
       }, 50);
 

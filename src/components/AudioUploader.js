@@ -39,7 +39,6 @@ export default function AudioUploader({ className, ...rest }) {
       toast.success(`Successfully uploaded: ${file.name}`);
       setTimeout(() => setFileName(null), 3000);
     } catch (error) {
-      console.error('Error uploading audio file:', error);
       toast.error('Failed to upload audio file');
       setFileName(null);
     } finally {

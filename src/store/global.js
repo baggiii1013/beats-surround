@@ -74,8 +74,14 @@ const getWaitTimeSeconds = (state, targetServerTime) => {
 
 const loadAudioSourceUrl = async ({ url, audioContext }) => {
   const response = await fetch(url);
+  
+  if (!response.ok) {
+    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+  }
+  
   const arrayBuffer = await response.arrayBuffer();
   const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
+  
   return {
     name: extractDefaultFileName(url),
     audioBuffer,
@@ -84,11 +90,8 @@ const loadAudioSourceUrl = async ({ url, audioContext }) => {
 };
 
 const initializeAudioContext = () => {
-  console.log('initializeAudioContext called');
-  
   // Check if we're in a browser environment
   if (typeof window === 'undefined') {
-    console.error('initializeAudioContext: Not in browser environment');
     throw new Error('AudioContext is not available in server-side environment');
   }
   
@@ -96,23 +99,25 @@ const initializeAudioContext = () => {
   const AudioContextClass = window.AudioContext || window.webkitAudioContext;
   
   if (!AudioContextClass) {
-    console.error('initializeAudioContext: AudioContext not supported');
     throw new Error('AudioContext is not supported in this browser');
   }
   
-  console.log('initializeAudioContext: Creating AudioContext');
   const audioContext = new AudioContextClass();
-  
-  console.log('initializeAudioContext: AudioContext created with state:', audioContext.state);
   
   return audioContext;
 };
 
 const fetchDefaultAudioSources = async () => {
-  // Mock default audio sources - in real implementation, these would come from your server
+  // Return actual demo audio sources from public/audio directory
   return [
-    { url: '/audio/sample1.mp3', name: 'Sample Track 1' },
-    { url: '/audio/sample2.mp3', name: 'Sample Track 2' },
+    { 
+      url: '/audio/Sia%20-%20Cheap%20Thrills%20(Performance%20Edit).flac', 
+      name: 'Sia - Cheap Thrills (Performance Edit)' 
+    },
+    { 
+      url: '/audio/Cheap%20Thrills%20feat%20Sean%20Paul%20-%20Sia%20Sean%20Paul%20.flac', 
+      name: 'Cheap Thrills feat Sean Paul - Sia Sean Paul' 
+    },
   ];
 };
 
@@ -129,20 +134,16 @@ const extractDefaultFileName = (url) => {
 };
 
 export const useGlobalStore = create((set, get) => {
-  console.log('Global store created with initial state');
-  
   // Add a timeout to prevent infinite loading
   setTimeout(() => {
     const state = get();
     if (state.isInitingSystem) {
-      console.log('Timeout reached, forcing initialization to complete');
       set({ isInitingSystem: false });
     }
-  }, 5000); // 5 second timeout (reduced from 15)
+  }, 30000); // 30 second timeout for loading large FLAC files
   
   // Function to initialize or reinitialize audio system
   const initializeAudio = async () => {
-    console.log("initializeAudio() - Starting audio system initialization");
     
     try {
       // First, try to create a minimal audio context to test browser support
@@ -150,10 +151,7 @@ export const useGlobalStore = create((set, get) => {
       
       try {
         audioContext = initializeAudioContext();
-        console.log("AudioContext created successfully");
       } catch (audioContextError) {
-        console.error("Failed to create AudioContext:", audioContextError);
-        
         // Fallback: Initialize without audio context
         const fallbackSource = {
           name: 'Audio Unavailable',
@@ -170,89 +168,121 @@ export const useGlobalStore = create((set, get) => {
           isInitingSystem: false,
         });
         
-        console.log("Initialized without audio context");
         return;
       }
       
       // Check if audioContext is suspended (common in modern browsers with autoplay restrictions)
       if (audioContext.state === 'suspended') {
-        console.log("AudioContext is suspended due to autoplay restrictions");
-        
-        // For suspended context, we'll create the audio setup but mark it as needing user interaction
-        const fallbackSource = {
-          name: 'Click to Enable Audio',
-          audioBuffer: null,
-          id: 'suspended-audio',
-          requiresUserInteraction: true,
-        };
-        
-        set({
-          audioSources: [fallbackSource],
-          audioPlayer: {
-            audioContext,
-            sourceNode: null,
-            gainNode: null,
-            suspended: true,
-          },
-          downloadedAudioIds: new Set(['suspended-audio']),
-          duration: 0,
-          selectedAudioId: fallbackSource.id,
-          isInitingSystem: false,
-        });
-        
-        console.log("Audio system initialized but suspended due to autoplay restrictions");
-        return;
+        // Continue with loading audio files even with suspended context
+        // The files will be loaded but marked as requiring user interaction
       }
       
       // Create master gain node for volume control
       const gainNode = audioContext.createGain();
       gainNode.gain.value = 1; // Default volume
       
-      // Create a dummy source node (will be replaced when playing)
-      const sourceNode = audioContext.createBufferSource();
-      
-      // Create a very simple demo buffer
-      const sampleRate = audioContext.sampleRate;
-      const duration = 10; // 10 seconds
-      const buffer = audioContext.createBuffer(1, sampleRate * duration, sampleRate);
-      const data = buffer.getChannelData(0);
-      
-      // Generate silence for demo
-      for (let i = 0; i < data.length; i++) {
-        data[i] = 0; // Silent track
+      // Load demo audio files from public/audio directory
+      try {
+        const demoAudioList = await fetchDefaultAudioSources();
+        const loadedSources = [];
+        
+        for (const audioInfo of demoAudioList) {
+          try {
+            const audioSource = await loadAudioSourceUrl({ 
+              url: audioInfo.url, 
+              audioContext 
+            });
+            loadedSources.push({
+              ...audioSource,
+              name: audioInfo.name, // Use the provided name
+              requiresUserInteraction: audioContext.state === 'suspended', // Mark if context is suspended
+            });
+          } catch (loadError) {
+            // Continue with other files
+          }
+        }
+        
+        if (loadedSources.length === 0) {
+          // Fallback to silent demo track if no files could be loaded
+          const sampleRate = audioContext.sampleRate;
+          const duration = 10;
+          const buffer = audioContext.createBuffer(1, sampleRate * duration, sampleRate);
+          const data = buffer.getChannelData(0);
+          
+          for (let i = 0; i < data.length; i++) {
+            data[i] = 0; // Silent track
+          }
+          
+          loadedSources.push({
+            name: 'Demo Track (Silent)',
+            audioBuffer: buffer,
+            id: 'demo-track-silent',
+          });
+        }
+        
+        // Create a dummy source node (will be replaced when playing)
+        const sourceNode = audioContext.createBufferSource();
+        
+        // Use the first loaded source as the initial selection
+        const firstSource = loadedSources[0];
+        sourceNode.buffer = firstSource.audioBuffer;
+        sourceNode.connect(gainNode);
+        gainNode.connect(audioContext.destination);
+        
+        // Update the store state with all loaded sources
+        set({
+          audioSources: loadedSources,
+          audioPlayer: {
+            audioContext,
+            sourceNode,
+            gainNode,
+            suspended: audioContext.state === 'suspended',
+          },
+          downloadedAudioIds: new Set(loadedSources.map(source => source.id)),
+          duration: firstSource.audioBuffer?.duration || 0,
+          selectedAudioId: firstSource.id,
+          isInitingSystem: false,
+        });
+        
+      } catch (audioLoadError) {
+        
+        // Fallback to silent demo track
+        const sampleRate = audioContext.sampleRate;
+        const duration = 10;
+        const buffer = audioContext.createBuffer(1, sampleRate * duration, sampleRate);
+        const data = buffer.getChannelData(0);
+        
+        for (let i = 0; i < data.length; i++) {
+          data[i] = 0;
+        }
+        
+        const fallbackSource = {
+          name: 'Demo Track (Fallback)',
+          audioBuffer: buffer,
+          id: 'demo-track-fallback',
+        };
+        
+        const sourceNode = audioContext.createBufferSource();
+        sourceNode.buffer = fallbackSource.audioBuffer;
+        sourceNode.connect(gainNode);
+        gainNode.connect(audioContext.destination);
+        
+        set({
+          audioSources: [fallbackSource],
+          audioPlayer: {
+            audioContext,
+            sourceNode,
+            gainNode,
+            suspended: false,
+          },
+          downloadedAudioIds: new Set(['demo-track-fallback']),
+          duration: fallbackSource.audioBuffer.duration,
+          selectedAudioId: fallbackSource.id,
+          isInitingSystem: false,
+        });
       }
       
-      const firstSource = {
-        name: 'Demo Track',
-        audioBuffer: buffer,
-        id: 'demo-track',
-      };
-      
-      // Connect the audio nodes
-      sourceNode.buffer = firstSource.audioBuffer;
-      sourceNode.connect(gainNode);
-      gainNode.connect(audioContext.destination);
-      
-      // Update the store state
-      set({
-        audioSources: [firstSource],
-        audioPlayer: {
-          audioContext,
-          sourceNode,
-          gainNode,
-          suspended: false,
-        },
-        downloadedAudioIds: new Set(['demo-track']),
-        duration: firstSource.audioBuffer.duration,
-        selectedAudioId: firstSource.id,
-        isInitingSystem: false,
-      });
-      
-      console.log("Audio system initialized successfully");
-      console.log("AudioContext state:", audioContext.state);
-      
     } catch (error) {
-      console.error("Failed to initialize audio:", error);
       
       // Set initialization as complete even on error to prevent infinite loading
       set({ 
@@ -264,11 +294,9 @@ export const useGlobalStore = create((set, get) => {
       try {
         if (typeof toast !== 'undefined') {
           toast.error("Failed to initialize audio system. Please refresh the page and try again.");
-        } else {
-          console.error("Toast not available, showing console error instead");
         }
       } catch (toastError) {
-        console.error("Error showing toast:", toastError);
+        // Silent fallback
       }
     }
   };
@@ -288,53 +316,24 @@ export const useGlobalStore = create((set, get) => {
         if (audioContext.state === 'suspended') {
           try {
             await audioContext.resume();
-            console.log('AudioContext resumed successfully via user interaction');
             
-            // If this was a suspended audio setup, reinitialize with proper audio
-            if (state.audioPlayer.suspended) {
-              // Create proper demo audio now that context is active
-              const sampleRate = audioContext.sampleRate;
-              const duration = 10;
-              const buffer = audioContext.createBuffer(1, sampleRate * duration, sampleRate);
-              const data = buffer.getChannelData(0);
-              
-              // Generate silence for demo
-              for (let i = 0; i < data.length; i++) {
-                data[i] = 0;
-              }
-              
-              const gainNode = audioContext.createGain();
-              gainNode.gain.value = 1;
-              const sourceNode = audioContext.createBufferSource();
-              
-              const audioSource = {
-                name: 'Demo Track',
-                audioBuffer: buffer,
-                id: 'demo-track',
-              };
-              
-              sourceNode.buffer = audioSource.audioBuffer;
-              sourceNode.connect(gainNode);
-              gainNode.connect(audioContext.destination);
-              
-              // Update the store with the active audio setup
-              set({
-                audioSources: [audioSource],
-                audioPlayer: {
-                  audioContext,
-                  sourceNode,
-                  gainNode,
-                  suspended: false,
-                },
-                downloadedAudioIds: new Set(['demo-track']),
-                duration: audioSource.audioBuffer.duration,
-                selectedAudioId: audioSource.id,
-              });
-              
-              console.log('Audio system fully initialized after user interaction');
-            }
+            // Update the audio sources to remove the requiresUserInteraction flag
+            const updatedAudioSources = state.audioSources.map(source => ({
+              ...source,
+              requiresUserInteraction: false, // Remove the user interaction requirement
+            }));
+            
+            // Update the store to mark audio as no longer suspended
+            set({
+              audioSources: updatedAudioSources,
+              audioPlayer: {
+                ...state.audioPlayer,
+                suspended: false,
+              },
+            });
+            
           } catch (error) {
-            console.error('Failed to resume AudioContext:', error);
+            // Failed to resume AudioContext
           }
         }
       }
@@ -347,7 +346,6 @@ export const useGlobalStore = create((set, get) => {
 
       // Before any audio playback, ensure the context is running
       if (audioContext.state !== "running") {
-        console.log("AudioContext still suspended, aborting play");
         toast.error("Audio context is suspended. Please try again.");
         return;
       }
@@ -400,7 +398,7 @@ export const useGlobalStore = create((set, get) => {
       try {
         sourceNode.stop(stopTime);
       } catch (error) {
-        console.warn("Failed to stop audio source:", error);
+        // Failed to stop audio source
       }
 
       set({ isPlaying: false });
@@ -442,13 +440,11 @@ export const useGlobalStore = create((set, get) => {
       const state = get();
       
       if (!state.selectedAudioId) {
-        console.error("Cannot broadcast play: No audio selected");
         return;
       }
 
       const audioIndex = state.findAudioIndexById(state.selectedAudioId);
       if (audioIndex === null) {
-        console.error("Cannot play audio: No index found");
         return;
       }
 
@@ -545,7 +541,7 @@ export const useGlobalStore = create((set, get) => {
         state.markAudioAsDownloaded(source.id);
         state.addToUploadHistory(source.name, source.id);
       } catch (error) {
-        console.error("Failed to decode audio data:", error);
+        // Failed to decode audio data
       }
     },
 
@@ -576,9 +572,8 @@ export const useGlobalStore = create((set, get) => {
         if (audioContext && audioContext.state === "suspended") {
           try {
             await audioContext.resume();
-            console.log("AudioContext resumed via user gesture");
           } catch (err) {
-            console.warn("Failed to resume AudioContext", err);
+            // Failed to resume AudioContext
           }
         }
       }
@@ -602,12 +597,10 @@ export const useGlobalStore = create((set, get) => {
 
     // Spatial audio actions (mock implementations)
     startSpatialAudio: () => {
-      console.log("Starting spatial audio");
       set({ isSpatialAudioEnabled: true });
     },
 
     sendStopSpatialAudio: () => {
-      console.log("Stopping spatial audio");
       set({ isSpatialAudioEnabled: false });
     },
 
