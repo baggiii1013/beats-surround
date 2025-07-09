@@ -26,7 +26,7 @@ const initialState = {
   selectedAudioId: null,
   
   // System state
-  isInitingSystem: true,
+  isInitingSystem: false, // Changed from true to false
   audioPlayer: null,
   
   // Network and sync
@@ -84,7 +84,27 @@ const loadAudioSourceUrl = async ({ url, audioContext }) => {
 };
 
 const initializeAudioContext = () => {
-  const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+  console.log('initializeAudioContext called');
+  
+  // Check if we're in a browser environment
+  if (typeof window === 'undefined') {
+    console.error('initializeAudioContext: Not in browser environment');
+    throw new Error('AudioContext is not available in server-side environment');
+  }
+  
+  // Try to create AudioContext with fallback for older browsers
+  const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+  
+  if (!AudioContextClass) {
+    console.error('initializeAudioContext: AudioContext not supported');
+    throw new Error('AudioContext is not supported in this browser');
+  }
+  
+  console.log('initializeAudioContext: Creating AudioContext');
+  const audioContext = new AudioContextClass();
+  
+  console.log('initializeAudioContext: AudioContext created with state:', audioContext.state);
+  
   return audioContext;
 };
 
@@ -109,40 +129,95 @@ const extractDefaultFileName = (url) => {
 };
 
 export const useGlobalStore = create((set, get) => {
+  console.log('Global store created with initial state');
+  
+  // Add a timeout to prevent infinite loading
+  setTimeout(() => {
+    const state = get();
+    if (state.isInitingSystem) {
+      console.log('Timeout reached, forcing initialization to complete');
+      set({ isInitingSystem: false });
+    }
+  }, 5000); // 5 second timeout (reduced from 15)
+  
   // Function to initialize or reinitialize audio system
   const initializeAudio = async () => {
-    console.log("initializeAudio()");
+    console.log("initializeAudio() - Starting audio system initialization");
     
     try {
-      // Create fresh audio context
-      const audioContext = initializeAudioContext();
+      // First, try to create a minimal audio context to test browser support
+      let audioContext;
+      
+      try {
+        audioContext = initializeAudioContext();
+        console.log("AudioContext created successfully");
+      } catch (audioContextError) {
+        console.error("Failed to create AudioContext:", audioContextError);
+        
+        // Fallback: Initialize without audio context
+        const fallbackSource = {
+          name: 'Audio Unavailable',
+          audioBuffer: null,
+          id: 'no-audio',
+        };
+        
+        set({
+          audioSources: [fallbackSource],
+          audioPlayer: null,
+          downloadedAudioIds: new Set(['no-audio']),
+          duration: 0,
+          selectedAudioId: fallbackSource.id,
+          isInitingSystem: false,
+        });
+        
+        console.log("Initialized without audio context");
+        return;
+      }
+      
+      // Check if audioContext is suspended (common in modern browsers)
+      if (audioContext.state === 'suspended') {
+        console.log("AudioContext is suspended, attempting to resume...");
+        
+        // Try to resume the audio context
+        try {
+          await audioContext.resume();
+          console.log("AudioContext resumed successfully");
+        } catch (resumeError) {
+          console.warn("Failed to resume AudioContext:", resumeError);
+          // Continue with suspended context - it can be resumed later via user interaction
+        }
+      }
       
       // Create master gain node for volume control
       const gainNode = audioContext.createGain();
       gainNode.gain.value = 1; // Default volume
+      
+      // Create a dummy source node (will be replaced when playing)
       const sourceNode = audioContext.createBufferSource();
       
-      // For demo purposes, create a simple sine wave as default audio
+      // Create a very simple demo buffer
       const sampleRate = audioContext.sampleRate;
-      const duration = 30; // 30 seconds
+      const duration = 10; // 10 seconds
       const buffer = audioContext.createBuffer(1, sampleRate * duration, sampleRate);
       const data = buffer.getChannelData(0);
       
-      // Generate a simple sine wave
+      // Generate silence for demo
       for (let i = 0; i < data.length; i++) {
-        data[i] = Math.sin(2 * Math.PI * 440 * i / sampleRate) * 0.1;
+        data[i] = 0; // Silent track
       }
       
       const firstSource = {
-        name: 'Demo Sine Wave',
+        name: 'Demo Track',
         audioBuffer: buffer,
-        id: 'demo-sine-wave',
+        id: 'demo-track',
       };
       
+      // Connect the audio nodes
       sourceNode.buffer = firstSource.audioBuffer;
       sourceNode.connect(gainNode);
       gainNode.connect(audioContext.destination);
       
+      // Update the store state
       set({
         audioSources: [firstSource],
         audioPlayer: {
@@ -150,16 +225,34 @@ export const useGlobalStore = create((set, get) => {
           sourceNode,
           gainNode,
         },
-        downloadedAudioIds: new Set(['demo-sine-wave']),
+        downloadedAudioIds: new Set(['demo-track']),
         duration: firstSource.audioBuffer.duration,
         selectedAudioId: firstSource.id,
         isInitingSystem: false,
       });
       
-      console.log("Audio system initialized with demo audio");
+      console.log("Audio system initialized successfully");
+      console.log("AudioContext state:", audioContext.state);
+      
     } catch (error) {
       console.error("Failed to initialize audio:", error);
-      set({ isInitingSystem: false });
+      
+      // Set initialization as complete even on error to prevent infinite loading
+      set({ 
+        isInitingSystem: false,
+        audioSources: [], // Empty array to indicate no audio available
+      });
+      
+      // Show user-friendly error message
+      try {
+        if (typeof toast !== 'undefined') {
+          toast.error("Failed to initialize audio system. Please refresh the page and try again.");
+        } else {
+          console.error("Toast not available, showing console error instead");
+        }
+      } catch (toastError) {
+        console.error("Error showing toast:", toastError);
+      }
     }
   };
 
@@ -169,6 +262,22 @@ export const useGlobalStore = create((set, get) => {
 
     // Initialize method for client-side initialization
     initializeAudio,
+
+    // Method to resume audio context (for handling browser autoplay restrictions)
+    resumeAudioContext: async () => {
+      const state = get();
+      if (state.audioPlayer?.audioContext) {
+        const { audioContext } = state.audioPlayer;
+        if (audioContext.state === 'suspended') {
+          try {
+            await audioContext.resume();
+            console.log('AudioContext resumed successfully');
+          } catch (error) {
+            console.error('Failed to resume AudioContext:', error);
+          }
+        }
+      }
+    },
 
     // Audio control methods
     playAudio: ({ offset = 0, when = 0, audioIndex = 0 }) => {

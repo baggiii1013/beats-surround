@@ -1,5 +1,6 @@
 'use client';
 
+import { Fragment, useEffect } from 'react';
 import { Toaster } from 'sonner';
 import AudioInitializer from '../components/AudioInitializer';
 import AudioUploader from '../components/AudioUploader';
@@ -13,9 +14,38 @@ import { useGlobalStore } from '../store/global';
 
 export default function Home() {
   const isInitingSystem = useGlobalStore((state) => state.isInitingSystem);
+  const audioSources = useGlobalStore((state) => state.audioSources);
+  const initializeAudio = useGlobalStore((state) => state.initializeAudio);
+  
+  console.log('Home component render - isInitingSystem:', isInitingSystem, 'audioSources.length:', audioSources.length);
+  
+  // If no audio sources and not initializing, start initialization
+  useEffect(() => {
+    if (!isInitingSystem && audioSources.length === 0) {
+      console.log('Home: Starting audio initialization');
+      useGlobalStore.setState({ isInitingSystem: true });
+      // Add a small delay to ensure state update is processed
+      setTimeout(() => {
+        initializeAudio();
+      }, 50);
+    }
+  }, [isInitingSystem, audioSources.length, initializeAudio]);
+  
+  // Force exit initialization if we have audio sources but are still initializing
+  useEffect(() => {
+    if (isInitingSystem && audioSources.length > 0) {
+      console.log('Home: Audio sources loaded, stopping initialization');
+      useGlobalStore.setState({ isInitingSystem: false });
+    }
+  }, [isInitingSystem, audioSources.length]);
   
   if (isInitingSystem) {
-    return <LoadingScreen />;
+    return (
+      <>
+        <AudioInitializer />
+        <LoadingScreen />
+      </>
+    );
   }
 
   return (

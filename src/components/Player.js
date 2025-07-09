@@ -1,12 +1,12 @@
 'use client';
 
 import {
-    Pause,
-    Play,
-    Repeat,
-    Shuffle,
-    SkipBack,
-    SkipForward
+  Pause,
+  Play,
+  Repeat,
+  Shuffle,
+  SkipBack,
+  SkipForward
 } from 'lucide-react';
 import { useCallback, useEffect, useState } from 'react';
 import { cn, formatTime } from '../lib/utils';
@@ -27,6 +27,7 @@ export default function Player() {
   const skipToPreviousTrack = useGlobalStore((state) => state.skipToPreviousTrack);
   const isShuffled = useGlobalStore((state) => state.isShuffled);
   const toggleShuffle = useGlobalStore((state) => state.toggleShuffle);
+  const resumeAudioContext = useGlobalStore((state) => state.resumeAudioContext);
 
   // Local state for slider
   const [sliderPosition, setSliderPosition] = useState(0);
@@ -84,13 +85,16 @@ export default function Player() {
     }
   }, [broadcastPlay, isPlaying]);
 
-  const handlePlay = useCallback(() => {
+  const handlePlay = useCallback(async () => {
+    // Try to resume audio context first (for browser autoplay restrictions)
+    await resumeAudioContext();
+    
     if (isPlaying) {
       broadcastPause();
     } else {
       broadcastPlay(sliderPosition);
     }
-  }, [isPlaying, broadcastPause, broadcastPlay, sliderPosition]);
+  }, [isPlaying, broadcastPause, broadcastPlay, sliderPosition, resumeAudioContext]);
 
   const handleSkipBack = useCallback(() => {
     if (!isShuffled) {
