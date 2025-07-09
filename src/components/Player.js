@@ -1,12 +1,12 @@
 'use client';
 
 import {
-  Pause,
-  Play,
-  Repeat,
-  Shuffle,
-  SkipBack,
-  SkipForward
+    Pause,
+    Play,
+    Repeat,
+    Shuffle,
+    SkipBack,
+    SkipForward
 } from 'lucide-react';
 import { useCallback, useEffect, useState } from 'react';
 import { cn, formatTime } from '../lib/utils';
@@ -28,6 +28,7 @@ export default function Player() {
   const isShuffled = useGlobalStore((state) => state.isShuffled);
   const toggleShuffle = useGlobalStore((state) => state.toggleShuffle);
   const resumeAudioContext = useGlobalStore((state) => state.resumeAudioContext);
+  const audioPlayer = useGlobalStore((state) => state.audioPlayer);
 
   // Local state for slider
   const [sliderPosition, setSliderPosition] = useState(0);
@@ -133,6 +134,13 @@ export default function Player() {
   }, [handlePlay]);
 
   const selectedSource = audioSources.find(source => source.id === selectedAudioId);
+  
+  // Check if audio context is suspended
+  const isAudioSuspended = audioPlayer?.suspended || selectedSource?.requiresUserInteraction;
+
+  const handleEnableAudio = async () => {
+    await resumeAudioContext();
+  };
 
   return (
     <div className="w-full flex justify-center">
@@ -146,6 +154,24 @@ export default function Player() {
             {audioSources.length} {audioSources.length === 1 ? 'track' : 'tracks'} in queue
           </p>
         </div>
+
+        {/* Autoplay restriction warning */}
+        {isAudioSuspended && (
+          <div className="bg-orange-900/50 border border-orange-500/30 rounded-lg p-4 mb-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-orange-400 text-sm font-medium">Audio Blocked</p>
+                <p className="text-orange-300 text-xs">Your browser blocked audio autoplay</p>
+              </div>
+              <button
+                onClick={handleEnableAudio}
+                className="px-3 py-1 bg-orange-600 hover:bg-orange-700 text-white rounded text-xs transition-colors"
+              >
+                Enable Audio
+              </button>
+            </div>
+          </div>
+        )}
 
         {/* Controls */}
         <div className="flex items-center justify-center gap-6 mb-4">

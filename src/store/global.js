@@ -174,18 +174,34 @@ export const useGlobalStore = create((set, get) => {
         return;
       }
       
-      // Check if audioContext is suspended (common in modern browsers)
+      // Check if audioContext is suspended (common in modern browsers with autoplay restrictions)
       if (audioContext.state === 'suspended') {
-        console.log("AudioContext is suspended, attempting to resume...");
+        console.log("AudioContext is suspended due to autoplay restrictions");
         
-        // Try to resume the audio context
-        try {
-          await audioContext.resume();
-          console.log("AudioContext resumed successfully");
-        } catch (resumeError) {
-          console.warn("Failed to resume AudioContext:", resumeError);
-          // Continue with suspended context - it can be resumed later via user interaction
-        }
+        // For suspended context, we'll create the audio setup but mark it as needing user interaction
+        const fallbackSource = {
+          name: 'Click to Enable Audio',
+          audioBuffer: null,
+          id: 'suspended-audio',
+          requiresUserInteraction: true,
+        };
+        
+        set({
+          audioSources: [fallbackSource],
+          audioPlayer: {
+            audioContext,
+            sourceNode: null,
+            gainNode: null,
+            suspended: true,
+          },
+          downloadedAudioIds: new Set(['suspended-audio']),
+          duration: 0,
+          selectedAudioId: fallbackSource.id,
+          isInitingSystem: false,
+        });
+        
+        console.log("Audio system initialized but suspended due to autoplay restrictions");
+        return;
       }
       
       // Create master gain node for volume control
@@ -224,6 +240,7 @@ export const useGlobalStore = create((set, get) => {
           audioContext,
           sourceNode,
           gainNode,
+          suspended: false,
         },
         downloadedAudioIds: new Set(['demo-track']),
         duration: firstSource.audioBuffer.duration,
@@ -271,7 +288,51 @@ export const useGlobalStore = create((set, get) => {
         if (audioContext.state === 'suspended') {
           try {
             await audioContext.resume();
-            console.log('AudioContext resumed successfully');
+            console.log('AudioContext resumed successfully via user interaction');
+            
+            // If this was a suspended audio setup, reinitialize with proper audio
+            if (state.audioPlayer.suspended) {
+              // Create proper demo audio now that context is active
+              const sampleRate = audioContext.sampleRate;
+              const duration = 10;
+              const buffer = audioContext.createBuffer(1, sampleRate * duration, sampleRate);
+              const data = buffer.getChannelData(0);
+              
+              // Generate silence for demo
+              for (let i = 0; i < data.length; i++) {
+                data[i] = 0;
+              }
+              
+              const gainNode = audioContext.createGain();
+              gainNode.gain.value = 1;
+              const sourceNode = audioContext.createBufferSource();
+              
+              const audioSource = {
+                name: 'Demo Track',
+                audioBuffer: buffer,
+                id: 'demo-track',
+              };
+              
+              sourceNode.buffer = audioSource.audioBuffer;
+              sourceNode.connect(gainNode);
+              gainNode.connect(audioContext.destination);
+              
+              // Update the store with the active audio setup
+              set({
+                audioSources: [audioSource],
+                audioPlayer: {
+                  audioContext,
+                  sourceNode,
+                  gainNode,
+                  suspended: false,
+                },
+                downloadedAudioIds: new Set(['demo-track']),
+                duration: audioSource.audioBuffer.duration,
+                selectedAudioId: audioSource.id,
+              });
+              
+              console.log('Audio system fully initialized after user interaction');
+            }
           } catch (error) {
             console.error('Failed to resume AudioContext:', error);
           }
