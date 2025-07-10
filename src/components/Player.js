@@ -1,18 +1,20 @@
 'use client';
 
 import {
-    Pause,
-    Play,
-    Repeat,
-    Shuffle,
-    SkipBack,
-    SkipForward
+  Pause,
+  Play,
+  Repeat,
+  Shuffle,
+  SkipBack,
+  SkipForward,
+  Volume2,
+  VolumeX
 } from 'lucide-react';
 import { useCallback, useEffect, useState } from 'react';
 import { cn, formatTime } from '../lib/utils';
 import { useGlobalStore } from '../store/global';
 import { Button } from './ui/button';
-import { Slider } from './ui/slider';
+import ElasticSlider from './ui/ElasticSlider';
 
 export default function Player() {
   const broadcastPlay = useGlobalStore((state) => state.broadcastPlay);
@@ -30,10 +32,13 @@ export default function Player() {
   const resumeAudioContext = useGlobalStore((state) => state.resumeAudioContext);
   const audioPlayer = useGlobalStore((state) => state.audioPlayer);
 
-  // Local state for slider
+  // Local state for sliders
   const [sliderPosition, setSliderPosition] = useState(0);
   const [trackDuration, setTrackDuration] = useState(0);
   const [isDragging, setIsDragging] = useState(false);
+  const [volume, setVolume] = useState(50);
+  const [isMuted, setIsMuted] = useState(false);
+  const [previousVolume, setPreviousVolume] = useState(50);
 
   // Find the selected audio source and its duration
   useEffect(() => {
@@ -66,25 +71,6 @@ export default function Player() {
 
     return () => clearInterval(interval);
   }, [isPlaying, getCurrentTrackPosition, isDragging]);
-
-  // Handle slider change
-  const handleSliderChange = useCallback((value) => {
-    const position = value[0];
-    setIsDragging(true);
-    setSliderPosition(position);
-  }, []);
-
-  // Handle slider release - seek to that position
-  const handleSliderCommit = useCallback((value) => {
-    const newPosition = value[0];
-    setIsDragging(false);
-    
-    if (isPlaying) {
-      broadcastPlay(newPosition);
-    } else {
-      setSliderPosition(newPosition);
-    }
-  }, [broadcastPlay, isPlaying]);
 
   const handlePlay = useCallback(async () => {
     // Try to resume audio context first (for browser autoplay restrictions)
@@ -141,6 +127,48 @@ export default function Player() {
   const handleEnableAudio = async () => {
     await resumeAudioContext();
   };
+
+  // Volume control functions
+  const updateVolume = useCallback((newVolume) => {
+    if (audioPlayer?.gainNode) {
+      const normalizedVolume = newVolume / 100;
+      audioPlayer.gainNode.gain.value = normalizedVolume;
+    }
+  }, [audioPlayer]);
+
+  const handleVolumeChange = useCallback((newVolume) => {
+    setVolume(newVolume);
+    updateVolume(newVolume);
+    if (newVolume === 0) {
+      setIsMuted(true);
+    } else if (isMuted) {
+      setIsMuted(false);
+    }
+  }, [updateVolume, isMuted]);
+
+  const handleVolumeCommit = useCallback((finalVolume) => {
+    // Optional: Add any logic for when volume adjustment is complete
+  }, []);
+
+  const toggleMute = useCallback(() => {
+    if (isMuted) {
+      setIsMuted(false);
+      setVolume(previousVolume);
+      updateVolume(previousVolume);
+    } else {
+      setIsMuted(true);
+      setPreviousVolume(volume);
+      setVolume(0);
+      updateVolume(0);
+    }
+  }, [isMuted, volume, previousVolume, updateVolume]);
+
+  // Initialize volume when audio player is available
+  useEffect(() => {
+    if (audioPlayer?.gainNode) {
+      updateVolume(volume);
+    }
+  }, [audioPlayer, updateVolume, volume]);
 
   return (
     <div className="w-full flex justify-center">
@@ -230,22 +258,62 @@ export default function Player() {
         </div>
 
         {/* Progress bar */}
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 mb-6">
           <span className="text-xs text-gray-400 min-w-11">
             {formatTime(sliderPosition)}
           </span>
-          <Slider
-            value={[sliderPosition]}
-            min={0}
-            max={trackDuration}
-            step={0.1}
-            onValueChange={handleSliderChange}
-            onValueCommit={handleSliderCommit}
+          <ElasticSlider
+            value={sliderPosition}
+            startingValue={0}
+            maxValue={trackDuration}
+            onChange={(value) => {
+              setIsDragging(true);
+              setSliderPosition(value);
+            }}
+            onCommit={(value) => {
+              setIsDragging(false);
+              if (isPlaying) {
+                broadcastPlay(value);
+              } else {
+                setSliderPosition(value);
+              }
+            }}
+            leftIcon={<div className="w-2 h-2 bg-gray-400 rounded-full" />}
+            rightIcon={<div className="w-2 h-2 bg-gray-400 rounded-full" />}
+            showValue={false}
             className="flex-1"
           />
           <span className="text-xs text-gray-400 min-w-11 text-right">
             {formatTime(trackDuration)}
           </span>
+        </div>
+
+        {/* Volume control */}
+        <div className="flex items-center justify-center gap-4">
+          <Button
+            variant="ghost"
+            size="icon"
+            className="text-gray-400 hover:text-white transition-colors"
+            onClick={toggleMute}
+          >
+            {isMuted || volume === 0 ? (
+              <VolumeX className="h-4 w-4" />
+            ) : (
+              <Volume2 className="h-4 w-4" />
+            )}
+          </Button>
+          <ElasticSlider
+            value={volume}
+            startingValue={0}
+            maxValue={100}
+            onChange={handleVolumeChange}
+            onCommit={handleVolumeCommit}
+            leftIcon={<VolumeX className="h-3 w-3 text-gray-400" />}
+            rightIcon={<Volume2 className="h-3 w-3 text-gray-400" />}
+            showValue={true}
+            formatValue={(val) => `${Math.round(val)}%`}
+            className="w-48"
+          />
         </div>
       </div>
     </div>

@@ -118,6 +118,10 @@ const fetchDefaultAudioSources = async () => {
       url: '/audio/Cheap%20Thrills%20feat%20Sean%20Paul%20-%20Sia%20Sean%20Paul%20.flac', 
       name: 'Cheap Thrills feat Sean Paul - Sia Sean Paul' 
     },
+    { 
+      url: '/audio/Sunflower%20-%20Spider-Man%20Into%20the%20Spider-Verse%20-%20Post%20Malone%20Swae%20Lee%20.flac', 
+      name: 'Sunflower - Spider-Man Into the Spider-Verse - Post Malone Swae Lee' 
+    },
   ];
 };
 
