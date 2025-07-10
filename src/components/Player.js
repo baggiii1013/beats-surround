@@ -171,29 +171,63 @@ export default function Player() {
   }, [audioPlayer, updateVolume, volume]);
 
   return (
-    <div className="w-full flex justify-center">
-      <div className="w-full max-w-[37rem]">
-        {/* Current track info */}
-        <div className="text-center mb-4">
-          <h3 className="text-lg font-semibold text-white truncate">
+    <div className="flex-1 flex items-center justify-center p-8">
+      <div className="w-full max-w-2xl">
+        <div className="w-full flex justify-center px-4 py-6">
+          <div className="w-full max-w-sm mx-auto">
+        {/* Mobile Music Player Layout */}
+        
+        {/* Large Cover Art */}
+        <div className="flex justify-center mb-8 backdrop-brightness-50">
+          <div className="relative">
+            <div className="w-72 h-72 bg-gray-800 rounded-2xl overflow-hidden shadow-2xl">
+              {selectedSource?.coverArt ? (
+                <img
+                  src={selectedSource.coverArt}
+                  alt={`${selectedSource.name} cover`}
+                  className="w-full h-full object-cover"
+                />
+              ) : (
+                <div className="w-full h-full bg-gradient-to-br from-purple-600/20 via-blue-600/20 to-cyan-600/20 flex items-center justify-center">
+                  <div className="text-6xl text-gray-400 opacity-50">♪</div>
+                </div>
+              )}
+            </div>
+            {/* Subtle glow effect */}
+            <div className="absolute inset-0 bg-gradient-to-br from-purple-500/10 via-blue-500/10 to-cyan-500/10 rounded-2xl -z-10 blur-xl scale-105" />
+          </div>
+        </div>
+
+        {/* Track Information */}
+        <div className="text-center mb-8">
+          <h1 className="text-2xl font-bold text-white mb-2 leading-tight">
             {selectedSource?.name || 'No track selected'}
-          </h3>
-          <p className="text-sm text-gray-400">
-            {audioSources.length} {audioSources.length === 1 ? 'track' : 'tracks'} in queue
+          </h1>
+          <p className="text-lg text-gray-400 mb-1">
+            {selectedSource?.artist || 'Unknown Artist'}
           </p>
+          {selectedSource?.album && (
+            <p className="text-sm text-gray-500">
+              {selectedSource.album}
+              {selectedSource.year && ` • ${selectedSource.year}`}
+            </p>
+          )}
+          {selectedSource?.genre && (
+            <p className="text-xs text-gray-600 mt-1 uppercase tracking-wide">
+              {selectedSource.genre}
+            </p>
+          )}
         </div>
 
         {/* Autoplay restriction warning */}
         {isAudioSuspended && (
-          <div className="bg-orange-900/50 border border-orange-500/30 rounded-lg p-4 mb-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-orange-400 text-sm font-medium">Audio Blocked</p>
-                <p className="text-orange-300 text-xs">Your browser blocked audio autoplay</p>
-              </div>
+          <div className="bg-orange-900/30 border border-orange-500/30 rounded-xl p-4 mb-6 backdrop-blur-sm">
+            <div className="text-center">
+              <p className="text-orange-400 text-sm font-semibold mb-1">Audio Blocked</p>
+              <p className="text-orange-300 text-xs mb-3">Your browser blocked audio autoplay</p>
               <button
                 onClick={handleEnableAudio}
-                className="px-3 py-1 bg-orange-600 hover:bg-orange-700 text-white rounded text-xs transition-colors"
+                className="px-6 py-2 bg-orange-600 hover:bg-orange-700 text-white rounded-full text-sm font-medium transition-all hover:scale-105"
               >
                 Enable Audio
               </button>
@@ -201,119 +235,135 @@ export default function Player() {
           </div>
         )}
 
-        {/* Controls */}
-        <div className="flex items-center justify-center gap-6 mb-4">
+        {/* Main Controls */}
+        <div className="flex items-center justify-center gap-8 mb-8">
           <Button
             variant="ghost"
             size="icon"
             className={cn(
-              "text-gray-400 hover:text-white transition-colors",
+              "text-gray-400 hover:text-white transition-all hover:scale-110",
               isShuffled && "text-blue-400"
             )}
             onClick={handleShuffle}
             disabled={audioSources.length <= 1}
           >
-            <Shuffle className="h-4 w-4" />
+            <Shuffle className="h-6 w-6" />
           </Button>
 
           <Button
             variant="ghost"
             size="icon"
-            className="text-gray-400 hover:text-white transition-colors"
+            className="text-gray-400 hover:text-white transition-all hover:scale-110"
             onClick={handleSkipBack}
             disabled={isShuffled || audioSources.length <= 1}
           >
-            <SkipBack className="h-5 w-5" />
+            <SkipBack className="h-7 w-7" />
           </Button>
 
           <Button
-            className="bg-white text-black rounded-full hover:scale-105 transition-transform"
-            size="icon"
+            className="bg-white text-black rounded-full hover:scale-110 transition-all shadow-lg w-16 h-16"
             onClick={handlePlay}
           >
             {isPlaying ? (
-              <Pause className="h-4 w-4" />
+              <Pause className="h-7 w-7" />
             ) : (
-              <Play className="h-4 w-4 ml-0.5" />
+              <Play className="h-7 w-7 ml-1" />
             )}
           </Button>
 
           <Button
             variant="ghost"
             size="icon"
-            className="text-gray-400 hover:text-white transition-colors"
+            className="text-gray-400 hover:text-white transition-all hover:scale-110"
             onClick={handleSkipForward}
             disabled={audioSources.length <= 1}
           >
-            <SkipForward className="h-5 w-5" />
+            <SkipForward className="h-7 w-7" />
           </Button>
 
           <Button
             variant="ghost"
             size="icon"
-            className="text-gray-400 hover:text-white transition-colors"
+            className="text-gray-400 hover:text-white transition-all hover:scale-110"
           >
-            <Repeat className="h-4 w-4 text-blue-400" />
+            <Repeat className="h-6 w-6 text-blue-400" />
           </Button>
         </div>
 
-        {/* Progress bar */}
-        <div className="flex items-center gap-2 mb-6">
-          <span className="text-xs text-gray-400 min-w-11">
-            {formatTime(sliderPosition)}
-          </span>
-          <ElasticSlider
-            value={sliderPosition}
-            startingValue={0}
-            maxValue={trackDuration}
-            onChange={(value) => {
-              setIsDragging(true);
-              setSliderPosition(value);
-            }}
-            onCommit={(value) => {
-              setIsDragging(false);
-              if (isPlaying) {
-                broadcastPlay(value);
-              } else {
-                setSliderPosition(value);
-              }
-            }}
-            leftIcon={<div className="w-2 h-2 bg-gray-400 rounded-full" />}
-            rightIcon={<div className="w-2 h-2 bg-gray-400 rounded-full" />}
-            showValue={false}
-            className="flex-1"
-          />
-          <span className="text-xs text-gray-400 min-w-11 text-right">
-            {formatTime(trackDuration)}
-          </span>
+        {/* Progress Bar */}
+        <div className="mb-8">
+          <div className="flex items-center gap-3 mb-2">
+            <span className="text-sm text-gray-400 font-mono">
+              {formatTime(sliderPosition)}
+            </span>
+            <div className="flex flex-col items-center justify-center gap-4 flex-1">
+              <ElasticSlider
+                value={sliderPosition}
+                startingValue={0}
+                maxValue={trackDuration}
+                onChange={(value) => {
+                  setIsDragging(true);
+                  setSliderPosition(value);
+                }}
+                onCommit={(value) => {
+                  setIsDragging(false);
+                  if (isPlaying) {
+                    broadcastPlay(value);
+                  } else {
+                    setSliderPosition(value);
+                  }
+                }}
+                leftIcon={<div className="w-1 h-1 bg-gray-400 rounded-full" />}
+                rightIcon={<div className="w-1 h-1 bg-gray-400 rounded-full" />}
+                showValue={false}
+                className="w-full max-w-xs"
+              />
+            </div>
+            <span className="text-sm text-gray-400 font-mono">
+              {formatTime(trackDuration)}
+            </span>
+          </div>
         </div>
 
-        {/* Volume control */}
-        <div className="flex items-center justify-center gap-4">
+        {/* Volume Control */}
+        <div className="flex items-center justify-center gap-4 mb-6">
           <Button
             variant="ghost"
             size="icon"
-            className="text-gray-400 hover:text-white transition-colors"
+            className="text-gray-400 hover:text-white transition-all hover:scale-110"
             onClick={toggleMute}
+            style={{ marginRight: '23px' }}
           >
             {isMuted || volume === 0 ? (
-              <VolumeX className="h-4 w-4" />
+              <VolumeX className="h-5 w-5" />
             ) : (
-              <Volume2 className="h-4 w-4" />
+              <Volume2 className="h-5 w-5" />
             )}
           </Button>
-          <ElasticSlider
-            value={volume}
-            startingValue={0}
-            maxValue={100}
-            onChange={handleVolumeChange}
-            onCommit={handleVolumeCommit}
-            leftIcon={<VolumeX className="h-3 w-3 text-gray-400" />}
-            rightIcon={<Volume2 className="h-3 w-3 text-gray-400" />}
-            showValue={true}
-            formatValue={(val) => `${Math.round(val)}%`}
-            className="w-48"
-          />
+          <div className="flex flex-col items-center justify-center gap-4 w-56">
+            <ElasticSlider
+              value={volume}
+              startingValue={0}
+              maxValue={100}
+              onChange={handleVolumeChange}
+              onCommit={handleVolumeCommit}
+              leftIcon={<VolumeX className="h-3 w-3 text-gray-400" />}
+              rightIcon={<Volume2 className="h-3 w-3 text-gray-400" />}
+              showValue={true}
+              formatValue={(val) => `${Math.round(val)}%`}
+              className="w-full"
+              style={{ marginRight: '50px' }}
+            />
+          </div>
+        </div>
+
+        {/* Queue Info */}
+        <div className="text-center text-gray-500">
+          <p className="text-sm">
+            {audioSources.length} {audioSources.length === 1 ? 'track' : 'tracks'} in queue
+          </p>
+        </div>
+          </div>
         </div>
       </div>
     </div>

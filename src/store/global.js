@@ -1,5 +1,6 @@
 import { toast } from 'sonner';
 import { create } from 'zustand';
+import { createPlaceholderCoverArt, extractAudioMetadata } from '../lib/audioMetadata';
 
 const MAX_NTP_MEASUREMENTS = 40;
 
@@ -80,12 +81,25 @@ const loadAudioSourceUrl = async ({ url, audioContext }) => {
   }
   
   const arrayBuffer = await response.arrayBuffer();
-  const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
+  
+  // Extract metadata (including cover art) before decoding audio
+  const metadata = await extractAudioMetadata(arrayBuffer, url);
+  
+  // Decode audio data
+  const audioBuffer = await audioContext.decodeAudioData(arrayBuffer.slice());
   
   return {
-    name: extractDefaultFileName(url),
+    name: metadata.title,
+    artist: metadata.artist,
+    album: metadata.album,
+    albumArtist: metadata.albumArtist,
+    year: metadata.year,
+    genre: metadata.genre,
+    coverArt: metadata.coverArt || createPlaceholderCoverArt(metadata.title, metadata.artist),
+    duration: audioBuffer.duration,
     audioBuffer,
     id: url,
+    metadata: metadata
   };
 };
 
@@ -108,20 +122,12 @@ const initializeAudioContext = () => {
 };
 
 const fetchDefaultAudioSources = async () => {
-  // Return actual demo audio sources from public/audio directory
+  // Return demo audio sources from public/audio directory
+  // Names will be extracted from metadata
   return [
-    { 
-      url: '/audio/Sia%20-%20Cheap%20Thrills%20(Performance%20Edit).flac', 
-      name: 'Sia - Cheap Thrills (Performance Edit)' 
-    },
-    { 
-      url: '/audio/Cheap%20Thrills%20feat%20Sean%20Paul%20-%20Sia%20Sean%20Paul%20.flac', 
-      name: 'Cheap Thrills feat Sean Paul - Sia Sean Paul' 
-    },
-    { 
-      url: '/audio/Sunflower%20-%20Spider-Man%20Into%20the%20Spider-Verse%20-%20Post%20Malone%20Swae%20Lee%20.flac', 
-      name: 'Sunflower - Spider-Man Into the Spider-Verse - Post Malone Swae Lee' 
-    },
+    { url: '/audio/Sia%20-%20Cheap%20Thrills%20(Performance%20Edit).flac' },
+    { url: '/audio/Cheap%20Thrills%20feat%20Sean%20Paul%20-%20Sia%20Sean%20Paul%20.flac' },
+    { url: '/audio/Sunflower%20-%20Spider-Man%20Into%20the%20Spider-Verse%20-%20Post%20Malone%20Swae%20Lee%20.flac' },
   ];
 };
 
@@ -198,7 +204,6 @@ export const useGlobalStore = create((set, get) => {
             });
             loadedSources.push({
               ...audioSource,
-              name: audioInfo.name, // Use the provided name
               requiresUserInteraction: audioContext.state === 'suspended', // Mark if context is suspended
             });
           } catch (loadError) {
