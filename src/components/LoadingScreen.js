@@ -63,6 +63,19 @@ export default function LoadingScreen() {
     useGlobalStore.setState({ isInitingSystem: false, audioSources: [] });
   };
 
+  // Auto-redirect to main page after showing autoplay warning
+  useEffect(() => {
+    if (showAutoplayWarning) {
+      const autoRedirectTimeout = setTimeout(() => {
+        // Automatically proceed to main page without enabling audio
+        setShowAutoplayWarning(false);
+        useGlobalStore.setState({ isInitingSystem: false });
+      }, 3000); // Show warning for 3 seconds before auto-redirecting
+
+      return () => clearTimeout(autoRedirectTimeout);
+    }
+  }, [showAutoplayWarning]);
+
   return (
     <div className="fixed inset-0 bg-black flex items-center justify-center z-50">
       <motion.div
@@ -87,21 +100,16 @@ export default function LoadingScreen() {
         {showAutoplayWarning ? (
           <div>
             <p className="text-orange-400 text-sm mb-4">
-              Your browser has blocked audio autoplay. Click the button below to enable audio playback.
+              Audio initialization is taking longer than expected due to browser autoplay restrictions.
             </p>
-            <div className="flex gap-2 justify-center">
-              <button
-                onClick={handleEnableAudio}
-                className="px-4 py-2 bg-orange-600 hover:bg-orange-700 text-white rounded-md text-sm transition-colors"
-              >
-                Enable Audio
-              </button>
-              <button
-                onClick={handleSkip}
-                className="px-4 py-2 bg-gray-600 hover:bg-gray-700 text-white rounded-md text-sm transition-colors"
-              >
-                Continue Without Audio
-              </button>
+            <p className="text-gray-400 text-xs mb-4">
+              You'll be redirected to the main page where you can enable audio playback manually.
+            </p>
+            <div className="flex items-center justify-center gap-2">
+              <Loader2 className="w-4 h-4 text-orange-400 animate-spin" />
+              <span className="text-orange-400 text-sm">
+                Redirecting...
+              </span>
             </div>
           </div>
         ) : showError ? (
