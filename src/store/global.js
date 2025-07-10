@@ -30,10 +30,12 @@ const initialState = {
   isInitingSystem: false, // Changed from true to false
   audioPlayer: null,
   
-  // Network and sync
+  // Network and sync - Enhanced for WebSocket
   socket: null,
   offsetEstimate: 0,
   ntpMeasurements: [],
+  roundTripEstimate: 0,
+  isSynced: false,
   
   // Room and users
   connectedClients: [],
@@ -452,21 +454,38 @@ export const useGlobalStore = create((set, get) => {
         return;
       }
 
-      const audioIndex = state.findAudioIndexById(state.selectedAudioId);
-      if (audioIndex === null) {
-        return;
+      // Send WebSocket message if connected
+      if (state.socket && state.socket.readyState === WebSocket.OPEN) {
+        state.socket.send(JSON.stringify({
+          type: 'PLAY',
+          audioId: state.selectedAudioId,
+          trackTimeSeconds: trackTimeSeconds || 0
+        }));
+      } else {
+        // Fallback to local playback
+        const audioIndex = state.findAudioIndexById(state.selectedAudioId);
+        if (audioIndex !== null) {
+          state.playAudio({
+            offset: trackTimeSeconds || 0,
+            when: 0,
+            audioIndex,
+          });
+        }
       }
-
-      state.playAudio({
-        offset: trackTimeSeconds || 0,
-        when: 0,
-        audioIndex,
-      });
     },
 
     broadcastPause: () => {
       const state = get();
-      state.pauseAudio({ when: 0 });
+      
+      // Send WebSocket message if connected
+      if (state.socket && state.socket.readyState === WebSocket.OPEN) {
+        state.socket.send(JSON.stringify({
+          type: 'PAUSE'
+        }));
+      } else {
+        // Fallback to local pause
+        state.pauseAudio({ when: 0 });
+      }
     },
 
     // Track navigation
@@ -603,6 +622,185 @@ export const useGlobalStore = create((set, get) => {
 
     // Socket management
     setSocket: (socket) => set({ socket }),
+
+    // WebSocket synchronization methods
+    setNtpMeasurements: (measurements) => set({ ntpMeasurements: measurements }),
+    setOffsetEstimate: (offset) => set({ offsetEstimate: offset }),
+    setRoundTripEstimate: (roundTrip) => set({ roundTripEstimate: roundTrip }),
+    setIsSynced: (synced) => set({ isSynced: synced }),
+
+    // Scheduled audio actions for synchronization
+    schedulePlay: ({ trackTimeSeconds, targetServerTime, audioId }) => {
+      const state = get();
+      if (state.isInitingSystem) {
+        return;
+      }
+
+      const waitTimeSeconds = getWaitTimeSeconds(state, targetServerTime);
+
+      // Update selected audio if different
+      if (audioId !== state.selectedAudioId) {
+        set({ selectedAudioId: audioId });
+      }
+
+      // Find the audio source
+      const audioSource = state.audioSources.find(source => source.id === audioId);
+      if (!audioSource) {
+        toast.error('Audio file not found');
+        return;
+      }
+
+      // Schedule the play action
+      setTimeout(() => {
+        try {
+          state.playAudio({
+            offset: trackTimeSeconds,
+            when: 0,
+            audioBuffer: audioSource.audioBuffer
+          });
+        } catch (error) {
+          // Error playing scheduled audio - silently ignore
+        }
+      }, waitTimeSeconds * 1000);
+    },
+
+    schedulePause: ({ targetServerTime }) => {
+      const state = get();
+      const waitTimeSeconds = getWaitTimeSeconds(state, targetServerTime);
+
+      setTimeout(() => {
+        try {
+          state.pauseAudio({ when: 0 });
+        } catch (error) {
+          // Error pausing scheduled audio - silently ignore
+        }
+      }, waitTimeSeconds * 1000);
+    },
+
+    // Process spatial audio configuration from server
+    processSpatialConfig: (config) => {
+      const state = get();
+      set({ spatialConfig: config });
+      const { gains, listeningSource } = config;
+
+      // Update listening source position if not dragging
+      if (!state.isDraggingListeningSource) {
+        set({ listeningSourcePosition: listeningSource });
+      }
+
+      // Apply gain changes if we have an audio player
+      if (state.audioPlayer) {
+        const { gainNode, audioContext } = state.audioPlayer;
+        
+        // For now, apply a simple gain based on average of all clients
+        // In a real implementation, you'd use the specific client's gain
+        const gainValues = Object.values(gains);
+        if (gainValues.length > 0) {
+          const averageGain = gainValues.reduce((sum, g) => sum + g.gain, 0) / gainValues.length;
+          const rampTime = gainValues[0]?.rampTime || 0.25;
+          
+          const now = audioContext.currentTime;
+          gainNode.gain.cancelScheduledValues(now);
+          gainNode.gain.setValueAtTime(gainNode.gain.value, now);
+          gainNode.gain.linearRampToValueAtTime(averageGain, now + rampTime);
+        }
+      }
+    },
+
+    processStopSpatialAudio: () => {
+      const state = get();
+      if (state.audioPlayer) {
+        const { gainNode, audioContext } = state.audioPlayer;
+        const now = audioContext.currentTime;
+        gainNode.gain.cancelScheduledValues(now);
+        gainNode.gain.setValueAtTime(gainNode.gain.value, now);
+        gainNode.gain.linearRampToValueAtTime(1.0, now + 0.25);
+      }
+      set({ 
+        isSpatialAudioEnabled: false,
+        spatialConfig: null 
+      });
+    },
+
+    // Enhanced playAudio method for WebSocket synchronization
+    playAudio: ({ offset, when, audioBuffer }) => {
+      const state = get();
+      const { audioPlayer } = state;
+      
+      if (!audioPlayer || !audioBuffer) {
+        return;
+      }
+
+      const { audioContext, gainNode } = audioPlayer;
+
+      // Stop any existing source
+      if (audioPlayer.sourceNode) {
+        try {
+          audioPlayer.sourceNode.stop();
+        } catch (e) {
+          // Ignore if already stopped
+        }
+      }
+
+      // Create new source node
+      const sourceNode = audioContext.createBufferSource();
+      sourceNode.buffer = audioBuffer;
+      sourceNode.connect(gainNode);
+      gainNode.connect(audioContext.destination);
+
+      // Schedule playback
+      const startTime = audioContext.currentTime + when;
+      sourceNode.start(startTime, offset);
+
+      // Handle track ending
+      sourceNode.onended = () => {
+        const currentState = get();
+        if (currentState.isPlaying && currentState.audioPlayer?.sourceNode === sourceNode) {
+          // Auto-skip to next track or stop
+          currentState.skipToNextTrack(true);
+        }
+      };
+
+      // Update state
+      set({
+        audioPlayer: {
+          ...audioPlayer,
+          sourceNode
+        },
+        isPlaying: true,
+        currentTime: offset,
+        playbackStartTime: startTime,
+        playbackOffset: offset,
+        duration: audioBuffer.duration
+      });
+    },
+
+    pauseAudio: ({ when }) => {
+      const state = get();
+      const { audioPlayer } = state;
+      
+      if (!audioPlayer?.sourceNode) {
+        return;
+      }
+
+      const { sourceNode, audioContext } = audioPlayer;
+      const stopTime = audioContext.currentTime + when;
+      
+      try {
+        sourceNode.stop(stopTime);
+      } catch (e) {
+        // Error stopping audio source - silently ignore
+      }
+
+      // Calculate current position
+      const elapsedSinceStart = stopTime - state.playbackStartTime;
+      const currentTrackPosition = state.playbackOffset + elapsedSinceStart;
+
+      set({
+        isPlaying: false,
+        currentTime: Math.max(0, currentTrackPosition)
+      });
+    },
 
     // Spatial audio actions (mock implementations)
     startSpatialAudio: () => {

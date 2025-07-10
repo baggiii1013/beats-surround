@@ -43,8 +43,6 @@ export async function extractAudioMetadata(arrayBuffer, url) {
       originalMetadata: metadata
     };
   } catch (error) {
-    console.warn('Failed to extract metadata:', error);
-    
     // Fallback to filename-based extraction
     return extractMetadataFromFilename(url);
   }

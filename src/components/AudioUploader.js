@@ -5,6 +5,7 @@ import { useState } from 'react';
 import { toast } from 'sonner';
 import { cn, trimFileName } from '../lib/utils';
 import { useGlobalStore } from '../store/global';
+import { useRoomStore } from '../store/room';
 import { Button } from './ui/button';
 
 export default function AudioUploader({ className, ...rest }) {
@@ -12,6 +13,8 @@ export default function AudioUploader({ className, ...rest }) {
   const [isUploading, setIsUploading] = useState(false);
   const [fileName, setFileName] = useState(null);
   const addAudioSource = useGlobalStore((state) => state.addAudioSource);
+  const socket = useGlobalStore((state) => state.socket);
+  const roomId = useRoomStore((state) => state.roomId);
 
   const handleFileUpload = async (file) => {
     if (!file.type.startsWith('audio/')) {
@@ -35,6 +38,18 @@ export default function AudioUploader({ className, ...rest }) {
 
       // Add to global store
       await addAudioSource(audioSource);
+      
+      // Share with other clients in the room if connected
+      if (socket && socket.readyState === WebSocket.OPEN && roomId) {
+        const audioBufferArray = Array.from(new Uint8Array(arrayBuffer));
+        
+        socket.send(JSON.stringify({
+          type: 'UPLOAD_AUDIO',
+          audioId: audioSource.id,
+          audioName: audioSource.name,
+          audioBuffer: audioBufferArray
+        }));
+      }
       
       toast.success(`Successfully uploaded: ${file.name}`);
       setTimeout(() => setFileName(null), 3000);

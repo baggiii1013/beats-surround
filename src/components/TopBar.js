@@ -16,6 +16,8 @@ export default function TopBar() {
   const isInitingSystem = useGlobalStore((state) => state.isInitingSystem);
   const isSpatialAudioEnabled = useGlobalStore((state) => state.isSpatialAudioEnabled);
   const resetStore = useGlobalStore((state) => state.resetStore);
+  const socket = useGlobalStore((state) => state.socket);
+  const isSynced = useGlobalStore((state) => state.isSynced);
 
   // Initialize room store on client side
   useEffect(() => {
@@ -52,7 +54,11 @@ export default function TopBar() {
         </motion.div>
         
         <div className="text-sm text-gray-400">
-          {isInitingSystem ? 'Initializing...' : 'Ready'}
+          {isInitingSystem ? 'Initializing...' : (
+            socket?.readyState === WebSocket.OPEN ? (
+              isSynced ? 'Synchronized' : 'Connecting...'
+            ) : 'Disconnected'
+          )}
         </div>
       </div>
 

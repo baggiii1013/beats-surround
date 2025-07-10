@@ -7,9 +7,11 @@ import AudioUploader from '../components/AudioUploader';
 import LoadingScreen from '../components/LoadingScreen';
 import Player from '../components/Player';
 import Queue from '../components/Queue';
+import RoomJoiner from '../components/RoomJoiner';
 import SpatialAudioBackground from '../components/SpatialAudioBackground';
 import TopBar from '../components/TopBar';
 import UserGrid from '../components/UserGrid';
+import WebSocketManager from '../components/WebSocketManager';
 import { useGlobalStore } from '../store/global';
 
 export default function Home() {
@@ -49,6 +51,7 @@ export default function Home() {
       <Toaster position="top-right" />
       <SpatialAudioBackground />
       <AudioInitializer />
+      <WebSocketManager />
       
       {/* Top Navigation */}
       <TopBar />
@@ -75,9 +78,14 @@ export default function Home() {
           </div>
         </div>
         
-        {/* Right Sidebar - Spatial Audio */}
-        <div className="w-1/3 border-l border-gray-700">
-          <UserGrid />
+        {/* Right Sidebar - Spatial Audio & Room */}
+        <div className="w-1/3 border-l border-gray-700 flex flex-col">
+          <div className="p-4 border-b border-gray-700">
+            <RoomJoiner />
+          </div>
+          <div className="flex-1">
+            <UserGrid />
+          </div>
         </div>
       </div>
     </div>

@@ -48,9 +48,9 @@ export default function UserGrid({ className, ...rest }) {
 
   // Mock connected clients for demo
   const mockClients = [
-    { id: '1', name: 'John Doe', x: 20, y: 30, isActive: true },
-    { id: '2', name: 'Jane Smith', x: 70, y: 60, isActive: false },
-    { id: '3', name: 'Bob Johnson', x: 40, y: 80, isActive: true },
+    { clientId: '1', username: 'John Doe', position: { x: 20, y: 30 }, isActive: true },
+    { clientId: '2', username: 'Jane Smith', position: { x: 70, y: 60 }, isActive: false },
+    { clientId: '3', username: 'Bob Johnson', position: { x: 40, y: 80 }, isActive: true },
   ];
 
   const clients = connectedClients.length > 0 ? connectedClients : mockClients;
@@ -107,11 +107,11 @@ export default function UserGrid({ className, ...rest }) {
             {/* Connected users */}
             {clients.map((client) => (
               <motion.div
-                key={client.id}
+                key={client.clientId}
                 className="absolute w-8 h-8 -translate-x-1/2 -translate-y-1/2"
                 style={{
-                  left: `${client.x}%`,
-                  top: `${client.y}%`,
+                  left: `${client.position?.x || 50}%`,
+                  top: `${client.position?.y || 50}%`,
                 }}
                 initial={{ scale: 0 }}
                 animate={{ scale: 1 }}
@@ -121,10 +121,10 @@ export default function UserGrid({ className, ...rest }) {
                   "w-full h-full rounded-full flex items-center justify-center text-xs font-medium text-white",
                   client.isActive ? "bg-green-500" : "bg-gray-500"
                 )}>
-                  {client.name.split(' ').map(n => n[0]).join('')}
+                  {client.username ? client.username.split(' ').map(n => n[0]).join('').toUpperCase() : '?'}
                 </div>
                 <div className="absolute -bottom-6 left-1/2 -translate-x-1/2 text-xs text-gray-400 whitespace-nowrap">
-                  {client.name}
+                  {client.username || 'Unknown'}
                 </div>
               </motion.div>
             ))}
