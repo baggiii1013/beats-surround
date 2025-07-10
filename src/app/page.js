@@ -1,6 +1,6 @@
 'use client';
 
-import { Fragment, useEffect } from 'react';
+import { Fragment, useEffect, useState } from 'react';
 import { Toaster } from 'sonner';
 import AudioInitializer from '../components/AudioInitializer';
 import AudioUploader from '../components/AudioUploader';
@@ -18,17 +18,22 @@ export default function Home() {
   const isInitingSystem = useGlobalStore((state) => state.isInitingSystem);
   const audioSources = useGlobalStore((state) => state.audioSources);
   const initializeAudio = useGlobalStore((state) => state.initializeAudio);
+  const [hasInitialized, setHasInitialized] = useState(false);
   
-  // If no audio sources and not initializing, start initialization
+  // Initialize audio system only once when component mounts
   useEffect(() => {
-    if (!isInitingSystem && audioSources.length === 0) {
+    if (!hasInitialized && !isInitingSystem && audioSources.length === 0) {
+      setHasInitialized(true);
       useGlobalStore.setState({ isInitingSystem: true });
       // Add a small delay to ensure state update is processed
       setTimeout(() => {
-        initializeAudio();
+        initializeAudio().catch(() => {
+          // If initialization fails, still mark as initialized to prevent retry loops
+          console.warn('Audio initialization failed');
+        });
       }, 50);
     }
-  }, [isInitingSystem, audioSources.length, initializeAudio]);
+  }, [hasInitialized, isInitingSystem, audioSources.length, initializeAudio]);
   
   // Force exit initialization if we have audio sources but are still initializing
   useEffect(() => {

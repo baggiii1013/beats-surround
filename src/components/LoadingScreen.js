@@ -8,12 +8,16 @@ import { useGlobalStore } from '../store/global';
 export default function LoadingScreen() {
   const [showError, setShowError] = useState(false);
   const [showAutoplayWarning, setShowAutoplayWarning] = useState(false);
+  const [hasAutoRedirected, setHasAutoRedirected] = useState(false);
   const isInitingSystem = useGlobalStore((state) => state.isInitingSystem);
   const audioSources = useGlobalStore((state) => state.audioSources);
   const initializeAudio = useGlobalStore((state) => state.initializeAudio);
   const resumeAudioContext = useGlobalStore((state) => state.resumeAudioContext);
 
   useEffect(() => {
+    // Prevent multiple redirections by checking if we've already redirected
+    if (hasAutoRedirected) return;
+
     // Show autoplay warning if we have suspended audio
     if (audioSources.length > 0) {
       const hasSuspendedAudio = audioSources.some(source => source.requiresUserInteraction);
@@ -31,9 +35,9 @@ export default function LoadingScreen() {
     }, 15000); // Increased timeout to 15 seconds for loading FLAC files
 
     return () => clearTimeout(timeout);
-  }, [isInitingSystem, audioSources]);
+  }, [isInitingSystem, audioSources, hasAutoRedirected]);
 
-  // Reset error state if audio sources are loaded
+  // Reset error state if audio sources are loaded successfully
   useEffect(() => {
     if (audioSources.length > 0 && !audioSources.some(source => source.requiresUserInteraction)) {
       setShowError(false);
@@ -42,34 +46,50 @@ export default function LoadingScreen() {
   }, [audioSources]);
 
   const handleForceSkip = () => {
-    useGlobalStore.setState({ isInitingSystem: false, audioSources: [] });
+    if (!hasAutoRedirected) {
+      setHasAutoRedirected(true);
+      useGlobalStore.setState({ isInitingSystem: false, audioSources: [] });
+    }
   };
 
   // Auto-redirect to main page after showing autoplay warning
   useEffect(() => {
-    if (showAutoplayWarning) {
+    if (showAutoplayWarning && !hasAutoRedirected) {
       const autoRedirectTimeout = setTimeout(() => {
-        // Automatically proceed to main page without enabling audio
+        setHasAutoRedirected(true);
         setShowAutoplayWarning(false);
         useGlobalStore.setState({ isInitingSystem: false });
       }, 3000); // Show warning for 3 seconds before auto-redirecting
 
       return () => clearTimeout(autoRedirectTimeout);
     }
-  }, [showAutoplayWarning]);
+  }, [showAutoplayWarning, hasAutoRedirected]);
 
   // Auto-redirect to main page after showing error
   useEffect(() => {
-    if (showError) {
+    if (showError && !hasAutoRedirected) {
       const autoRedirectTimeout = setTimeout(() => {
-        // Automatically proceed to main page without audio
+        setHasAutoRedirected(true);
         setShowError(false);
         useGlobalStore.setState({ isInitingSystem: false, audioSources: [] });
       }, 3000); // Show error for 3 seconds before auto-redirecting
 
       return () => clearTimeout(autoRedirectTimeout);
     }
-  }, [showError]);
+  }, [showError, hasAutoRedirected]);
+
+  // Safety timeout to prevent infinite loading in Safari
+  useEffect(() => {
+    const safetyTimeout = setTimeout(() => {
+      if (isInitingSystem && !hasAutoRedirected) {
+        console.warn('Safety timeout triggered - forcing exit from loading screen');
+        setHasAutoRedirected(true);
+        useGlobalStore.setState({ isInitingSystem: false });
+      }
+    }, 20000); // 20 second safety timeout
+
+    return () => clearTimeout(safetyTimeout);
+  }, [isInitingSystem, hasAutoRedirected]);
 
   return (
     <div className="fixed inset-0 bg-black flex items-center justify-center z-50">
