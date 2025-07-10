@@ -103,7 +103,7 @@ export default function LoadingScreen() {
               Audio initialization is taking longer than expected due to browser autoplay restrictions.
             </p>
             <p className="text-gray-400 text-xs mb-4">
-              You'll be redirected to the main page where you can enable audio playback manually.
+              You&apos;ll be redirected to the main page where you can enable audio playback manually.
             </p>
             <div className="flex items-center justify-center gap-2">
               <Loader2 className="w-4 h-4 text-orange-400 animate-spin" />
