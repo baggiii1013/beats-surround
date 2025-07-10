@@ -2,6 +2,7 @@
 
 import { useEffect, useRef } from 'react';
 import { toast } from 'sonner';
+import { WS_URL } from '../config/websocket';
 import {
     ClientActionTypes,
     ScheduledActionTypes,
@@ -63,7 +64,7 @@ export default function WebSocketManager() {
       return;
     }
     
-    const wsUrl = `ws://localhost:8080/ws?roomId=${roomId}&username=${encodeURIComponent(effectiveUsername)}`;
+    const wsUrl = `${WS_URL}/ws?roomId=${roomId}&username=${encodeURIComponent(effectiveUsername)}`;
     
     try {
       const ws = new WebSocket(wsUrl);

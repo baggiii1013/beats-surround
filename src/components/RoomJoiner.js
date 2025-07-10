@@ -4,6 +4,8 @@ import { AnimatePresence, motion } from 'framer-motion';
 import { Check, Copy, Users, Wifi, WifiOff } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { toast } from 'sonner';
+import { API_URL } from '../config/websocket';
+import { generateRoomId } from '../lib/utils';
 import { useGlobalStore } from '../store/global';
 import { useRoomStore } from '../store/room';
 import { Badge } from './ui/badge';
@@ -45,7 +47,7 @@ export default function RoomJoiner() {
     
     try {
       // Validate room exists by checking with server
-      const response = await fetch(`http://localhost:8080/api/rooms/${roomIdInput.trim()}`);
+      const response = await fetch(`${API_URL}/api/rooms/${roomIdInput.trim()}`);
       
       if (response.ok) {
         // Room exists, join it
@@ -71,7 +73,7 @@ export default function RoomJoiner() {
       resetStore();
       
       // Create room on server
-      const response = await fetch('http://localhost:8080/api/rooms', {
+      const response = await fetch(`${API_URL}/api/rooms`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

@@ -10,7 +10,7 @@ const server = http.createServer(app);
 // Enable CORS for all routes
 app.use(cors({
   origin: process.env.NODE_ENV === 'production' 
-    ? ['https://your-domain.com'] 
+    ? ['https://beats-surround.vercel.app/'] 
     : ['http://localhost:3000'],
   credentials: true
 }));
