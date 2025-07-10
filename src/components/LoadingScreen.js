@@ -41,24 +41,6 @@ export default function LoadingScreen() {
     }
   }, [audioSources]);
 
-  const handleRetry = () => {
-    setShowError(false);
-    initializeAudio();
-  };
-
-  const handleSkip = () => {
-    setShowError(false);
-    setShowAutoplayWarning(false);
-    // Force complete initialization even without audio
-    useGlobalStore.setState({ isInitingSystem: false, audioSources: [] });
-  };
-
-  const handleEnableAudio = async () => {
-    setShowAutoplayWarning(false);
-    await resumeAudioContext();
-    // The resumeAudioContext method will handle updating the store state
-  };
-
   const handleForceSkip = () => {
     useGlobalStore.setState({ isInitingSystem: false, audioSources: [] });
   };
@@ -75,6 +57,19 @@ export default function LoadingScreen() {
       return () => clearTimeout(autoRedirectTimeout);
     }
   }, [showAutoplayWarning]);
+
+  // Auto-redirect to main page after showing error
+  useEffect(() => {
+    if (showError) {
+      const autoRedirectTimeout = setTimeout(() => {
+        // Automatically proceed to main page without audio
+        setShowError(false);
+        useGlobalStore.setState({ isInitingSystem: false, audioSources: [] });
+      }, 3000); // Show error for 3 seconds before auto-redirecting
+
+      return () => clearTimeout(autoRedirectTimeout);
+    }
+  }, [showError]);
 
   return (
     <div className="fixed inset-0 bg-black flex items-center justify-center z-50">
@@ -117,19 +112,14 @@ export default function LoadingScreen() {
             <p className="text-red-400 text-sm mb-4">
               Audio initialization is taking longer than expected. This might be due to browser autoplay restrictions.
             </p>
-            <div className="flex gap-2 justify-center">
-              <button
-                onClick={handleRetry}
-                className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-md text-sm transition-colors"
-              >
-                Retry
-              </button>
-              <button
-                onClick={handleSkip}
-                className="px-4 py-2 bg-gray-600 hover:bg-gray-700 text-white rounded-md text-sm transition-colors"
-              >
-                Skip Audio
-              </button>
+            <p className="text-gray-400 text-xs mb-4">
+              You&apos;ll be redirected to the main page where you can enable audio playback manually.
+            </p>
+            <div className="flex items-center justify-center gap-2">
+              <Loader2 className="w-4 h-4 text-red-400 animate-spin" />
+              <span className="text-red-400 text-sm">
+                Redirecting...
+              </span>
             </div>
           </div>
         ) : (
