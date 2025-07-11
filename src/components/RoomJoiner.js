@@ -137,7 +137,7 @@ export default function RoomJoiner() {
               <ConnectionIcon className={`w-4 h-4 ${connectionStatus.color}`} />
               <span className="capitalize">{connectionStatus.status}</span>
               {isSynced && roundTripEstimate > 0 && (
-                <span className="text-xs">
+                <span className="text-xs hidden sm:inline">
                   (±{Math.round(roundTripEstimate)}ms)
                 </span>
               )}
@@ -255,7 +255,7 @@ export default function RoomJoiner() {
                   <div className="text-sm font-medium text-white">
                     {client.username || `User ${client.clientId.slice(0, 6)}`}
                   </div>
-                  <div className="text-xs text-gray-400">
+                  <div className="text-xs text-gray-400 hidden sm:block">
                     {client.rtt > 0 && `${client.rtt}ms`}
                   </div>
                 </div>

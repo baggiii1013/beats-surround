@@ -38,9 +38,9 @@ export default function TopBar() {
   };
 
   return (
-    <div className="h-16 bg-black/80 backdrop-blur-md border-b border-gray-800 flex items-center justify-between px-6">
+    <div className="h-16 bg-black/80 backdrop-blur-md border-b border-gray-800 flex items-center justify-between px-4 lg:px-6">
       {/* Left side - Logo */}
-      <div className="flex items-center gap-4">
+      <div className="flex items-center gap-2 lg:gap-4">
         <motion.div
           initial={{ opacity: 0, x: -20 }}
           animate={{ opacity: 1, x: 0 }}
@@ -49,15 +49,15 @@ export default function TopBar() {
           <div className="w-8 h-8 bg-gradient-to-br from-blue-500 to-purple-600 rounded-lg flex items-center justify-center">
             <Volume2 className="w-5 h-5 text-white" />
           </div>
-          <h1 className="text-xl font-bold text-white">BeatsSurround</h1>
+          <h1 className="text-lg lg:text-xl font-bold text-white">BeatsSurround</h1>
         </motion.div>
         
-        <SyncQualityIndicator className="text-sm" />
+        <SyncQualityIndicator className="text-sm hidden sm:block" />
       </div>
 
-      {/* Center - Room info */}
+      {/* Center - Room info (Desktop only) */}
       {roomId && (
-        <div className="flex items-center gap-4">
+        <div className="hidden lg:flex items-center gap-4">
           <div className="flex items-center gap-2">
             <Wifi className="w-4 h-4 text-green-400" />
             <span className="text-sm text-gray-300">Room:</span>
@@ -87,8 +87,26 @@ export default function TopBar() {
         </div>
       )}
 
-      {/* Right side - Actions */}
-      <div className="flex items-center gap-2">
+      {/* Mobile Room Info */}
+      {roomId && (
+        <div className="flex lg:hidden items-center gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleCopyRoomId}
+            className="font-mono text-xs px-2"
+            disabled={!roomId}
+          >
+            {roomId || 'Loading...'}
+          </Button>
+          <Badge variant="outline" className="text-xs">
+            {connectedClients.length}
+          </Badge>
+        </div>
+      )}
+
+      {/* Right side - Actions (Desktop only) */}
+      <div className="hidden lg:flex items-center gap-2">
         {roomId && (
           <Button
             variant="outline"
