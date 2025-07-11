@@ -5,6 +5,7 @@ import { Users, Volume2, Wifi } from 'lucide-react';
 import { useEffect } from 'react';
 import { useGlobalStore } from '../store/global';
 import { useRoomStore } from '../store/room';
+import SyncQualityIndicator from './SyncQualityIndicator';
 import { Badge } from './ui/badge';
 import { Button } from './ui/button';
 
@@ -53,13 +54,7 @@ export default function TopBar() {
           <h1 className="text-xl font-bold text-white">BeatsSurround</h1>
         </motion.div>
         
-        <div className="text-sm text-gray-400">
-          {isInitingSystem ? 'Initializing...' : (
-            socket?.readyState === WebSocket.OPEN ? (
-              isSynced ? 'Synchronized' : 'Connecting...'
-            ) : 'Disconnected'
-          )}
-        </div>
+        <SyncQualityIndicator className="text-sm" />
       </div>
 
       {/* Center - Room info */}
@@ -81,7 +76,7 @@ export default function TopBar() {
         <div className="flex items-center gap-2">
           <Users className="w-4 h-4 text-gray-400" />
           <Badge variant="outline" className="text-xs">
-            {connectedClients.length + 1} {/* +1 for current user */}
+            {connectedClients.length} {/* +1 for current user */}
           </Badge>
         </div>
         

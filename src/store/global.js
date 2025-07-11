@@ -1,6 +1,7 @@
 import { toast } from 'sonner';
 import { create } from 'zustand';
 import { createPlaceholderCoverArt, extractAudioMetadata } from '../lib/audioMetadata';
+import { createHighPrecisionTimer, getAudioController, getSyncEngine } from '../lib/audioSync';
 
 const MAX_NTP_MEASUREMENTS = 40;
 
@@ -36,6 +37,16 @@ const initialState = {
   ntpMeasurements: [],
   roundTripEstimate: 0,
   isSynced: false,
+  
+  // Sync quality monitoring
+  syncQuality: {
+    latency: 0,
+    jitter: 0,
+    accuracy: 0,
+    clockDrift: 0,
+    qualityLevel: 'unknown', // 'excellent', 'good', 'fair', 'poor', 'unknown'
+    lastUpdate: 0
+  },
   
   // Room and users
   connectedClients: [],
@@ -240,7 +251,10 @@ export const useGlobalStore = create((set, get) => {
         sourceNode.connect(gainNode);
         gainNode.connect(audioContext.destination);
         
-        // Update the store state with all loaded sources
+        // Update the store state with all loaded sources and enhanced audio system
+        const syncEngine = getSyncEngine();
+        const audioController = getAudioController(audioContext);
+        
         set({
           audioSources: loadedSources,
           audioPlayer: {
@@ -248,6 +262,8 @@ export const useGlobalStore = create((set, get) => {
             sourceNode,
             gainNode,
             suspended: audioContext.state === 'suspended',
+            syncEngine,
+            audioController
           },
           downloadedAudioIds: new Set(loadedSources.map(source => source.id)),
           duration: firstSource.audioBuffer?.duration || 0,
@@ -353,6 +369,24 @@ export const useGlobalStore = create((set, get) => {
     // Audio control methods
     playAudio: ({ offset = 0, when = 0, audioIndex = 0 }) => {
       const state = get();
+      
+      // Use AudioController for enhanced playback
+      if (state.audioController) {
+        const audioBuffer = state.audioSources[audioIndex].audioBuffer;
+        const { audioContext } = getAudioPlayer(state);
+        const startTime = audioContext.currentTime + when;
+        
+        state.audioController.play(audioBuffer, offset, startTime);
+        
+        set((state) => ({
+          ...state,
+          isPlaying: true,
+          duration: audioBuffer.duration || 0,
+        }));
+        return;
+      }
+
+      // Fallback to legacy method
       const { sourceNode, audioContext, gainNode } = getAudioPlayer(state);
 
       // Before any audio playback, ensure the context is running
@@ -402,6 +436,17 @@ export const useGlobalStore = create((set, get) => {
 
     pauseAudio: ({ when = 0 }) => {
       const state = get();
+      
+      // Use AudioController for enhanced pause
+      if (state.audioController) {
+        const { audioContext } = getAudioPlayer(state);
+        const stopTime = audioContext.currentTime + when;
+        state.audioController.pause(stopTime);
+        set({ isPlaying: false });
+        return;
+      }
+
+      // Fallback to legacy method
       const { sourceNode, audioContext } = getAudioPlayer(state);
 
       const stopTime = audioContext.currentTime + when;
@@ -540,11 +585,10 @@ export const useGlobalStore = create((set, get) => {
     // Current time tracking
     getCurrentTrackPosition: () => {
       const state = get();
-      if (!state.isPlaying || !state.audioPlayer) return state.currentTime;
+      if (!state.audioController) return state.currentTime;
       
-      const { audioContext } = state.audioPlayer;
-      const elapsed = audioContext.currentTime - state.playbackStartTime;
-      return state.playbackOffset + elapsed;
+      // Use high-precision position tracking from AudioController
+      return state.audioController.getCurrentPosition();
     },
 
     // Audio source management
@@ -623,58 +667,131 @@ export const useGlobalStore = create((set, get) => {
     // Socket management
     setSocket: (socket) => set({ socket }),
 
-    // WebSocket synchronization methods
-    setNtpMeasurements: (measurements) => set({ ntpMeasurements: measurements }),
+    // Enhanced WebSocket synchronization methods
+    setNtpMeasurements: (measurements) => {
+      set({ ntpMeasurements: measurements });
+      
+      // Update sync engine with latest measurement
+      const syncEngine = getSyncEngine();
+      if (measurements.length > 0) {
+        const latestMeasurement = measurements[measurements.length - 1];
+        syncEngine.addNTPMeasurement(latestMeasurement);
+        
+        // Update store with sync engine status
+        const syncStatus = syncEngine.getSyncStatus();
+        set({ 
+          offsetEstimate: syncStatus.clockOffset,
+          isSynced: syncStatus.isSync,
+          syncQuality: syncStatus.quality 
+        });
+      }
+    },
+    
     setOffsetEstimate: (offset) => set({ offsetEstimate: offset }),
+    
+    // Sync quality monitoring
+    getSyncQuality: () => {
+      const state = get();
+      return state.syncQuality;
+    },
+    
+    updateSyncQuality: (quality) => {
+      set((state) => ({
+        ...state,
+        syncQuality: {
+          ...state.syncQuality,
+          ...quality,
+          lastUpdate: Date.now()
+        }
+      }));
+    },
+    
     setRoundTripEstimate: (roundTrip) => set({ roundTripEstimate: roundTrip }),
     setIsSynced: (synced) => set({ isSynced: synced }),
 
-    // Scheduled audio actions for synchronization
+    // Enhanced scheduled audio actions for synchronization
     schedulePlay: ({ trackTimeSeconds, targetServerTime, audioId }) => {
       const state = get();
       if (state.isInitingSystem) {
         return;
       }
 
-      const waitTimeSeconds = getWaitTimeSeconds(state, targetServerTime);
+      // Find the audio source
+      const audioSource = state.audioSources.find(source => source.id === audioId);
+      if (!audioSource) {
+        toast.error('Audio file not found - please reupload');
+        return;
+      }
 
       // Update selected audio if different
       if (audioId !== state.selectedAudioId) {
         set({ selectedAudioId: audioId });
       }
 
-      // Find the audio source
-      const audioSource = state.audioSources.find(source => source.id === audioId);
-      if (!audioSource) {
-        toast.error('Audio file not found');
+      const syncEngine = getSyncEngine();
+      const audioController = getAudioController(state.audioPlayer?.audioContext);
+      
+      if (!audioController) {
+        console.error('Audio controller not available');
         return;
       }
 
-      // Schedule the play action
-      setTimeout(() => {
-        try {
-          state.playAudio({
-            offset: trackTimeSeconds,
-            when: 0,
-            audioBuffer: audioSource.audioBuffer
-          });
-        } catch (error) {
-          // Error playing scheduled audio - silently ignore
-        }
-      }, waitTimeSeconds * 1000);
+      // Check sync quality and warn if poor
+      const syncStatus = syncEngine.getSyncStatus();
+      if (syncStatus.quality === 'poor') {
+        console.warn('Poor sync quality detected:', syncStatus);
+      }
+
+      // Schedule with high precision
+      audioController.schedulePlay({
+        audioBuffer: audioSource.audioBuffer,
+        startTime: targetServerTime,
+        offset: trackTimeSeconds,
+        trackId: audioId,
+        fadeIn: true
+      }).then(result => {
+        console.log('Audio scheduled:', {
+          accuracy: result.accuracy,
+          bufferTime: result.bufferTime,
+          syncQuality: syncStatus.quality
+        });
+        
+        // Update state
+        set({
+          isPlaying: true,
+          currentTime: trackTimeSeconds,
+          playbackStartTime: result.scheduledTime,
+          playbackOffset: trackTimeSeconds,
+          duration: audioSource.audioBuffer.duration
+        });
+      }).catch(error => {
+        console.error('Failed to schedule audio:', error);
+        toast.error('Failed to start playback');
+      });
     },
 
     schedulePause: ({ targetServerTime }) => {
       const state = get();
-      const waitTimeSeconds = getWaitTimeSeconds(state, targetServerTime);
+      const audioController = getAudioController(state.audioPlayer?.audioContext);
+      
+      if (!audioController || !state.selectedAudioId) {
+        return;
+      }
 
-      setTimeout(() => {
-        try {
-          state.pauseAudio({ when: 0 });
-        } catch (error) {
-          // Error pausing scheduled audio - silently ignore
-        }
-      }, waitTimeSeconds * 1000);
+      const result = audioController.schedulePause(state.selectedAudioId, targetServerTime);
+      
+      if (result) {
+        set({
+          isPlaying: false,
+          currentTime: Math.max(0, result.currentPosition)
+        });
+        
+        console.log('Audio pause scheduled:', {
+          stopTime: result.stopTime,
+          position: result.currentPosition,
+          accuracy: result.accuracy
+        });
+      }
     },
 
     // Process spatial audio configuration from server
