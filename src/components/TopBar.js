@@ -20,12 +20,10 @@ export default function TopBar() {
   const socket = useGlobalStore((state) => state.socket);
   const isSynced = useGlobalStore((state) => state.isSynced);
 
-  // Initialize room store on client side
+  // Initialize room store on client side (without auto room creation)
   useEffect(() => {
-    if (!roomId) {
-      initialize();
-    }
-  }, [roomId, initialize]);
+    initialize();
+  }, [initialize]);
 
   const handleNewRoom = () => {
     const newRoomId = generateNewRoomId();
@@ -58,45 +56,49 @@ export default function TopBar() {
       </div>
 
       {/* Center - Room info */}
-      <div className="flex items-center gap-4">
-        <div className="flex items-center gap-2">
-          <Wifi className="w-4 h-4 text-green-400" />
-          <span className="text-sm text-gray-300">Room:</span>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={handleCopyRoomId}
-            className="font-mono text-sm"
-            disabled={!roomId}
-          >
-            {roomId || 'Loading...'}
-          </Button>
+      {roomId && (
+        <div className="flex items-center gap-4">
+          <div className="flex items-center gap-2">
+            <Wifi className="w-4 h-4 text-green-400" />
+            <span className="text-sm text-gray-300">Room:</span>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleCopyRoomId}
+              className="font-mono text-sm"
+              disabled={!roomId}
+            >
+              {roomId || 'Loading...'}
+            </Button>
+          </div>
+          
+          <div className="flex items-center gap-2">
+            <Users className="w-4 h-4 text-gray-400" />
+            <Badge variant="outline" className="text-xs">
+              {connectedClients.length} {/* Current user count */}
+            </Badge>
+          </div>
+          
+          {isSpatialAudioEnabled && (
+            <Badge className="text-xs bg-blue-500/20 text-blue-300 border-blue-500/30">
+              Spatial Audio
+            </Badge>
+          )}
         </div>
-        
-        <div className="flex items-center gap-2">
-          <Users className="w-4 h-4 text-gray-400" />
-          <Badge variant="outline" className="text-xs">
-            {connectedClients.length} {/* +1 for current user */}
-          </Badge>
-        </div>
-        
-        {isSpatialAudioEnabled && (
-          <Badge className="text-xs bg-blue-500/20 text-blue-300 border-blue-500/30">
-            Spatial Audio
-          </Badge>
-        )}
-      </div>
+      )}
 
       {/* Right side - Actions */}
       <div className="flex items-center gap-2">
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={handleNewRoom}
-          className="text-sm"
-        >
-          New Room
-        </Button>
+        {roomId && (
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleNewRoom}
+            className="text-sm"
+          >
+            New Room
+          </Button>
+        )}
       </div>
     </div>
   );

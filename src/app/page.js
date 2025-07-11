@@ -8,16 +8,19 @@ import LoadingScreen from '../components/LoadingScreen';
 import Player from '../components/Player';
 import Queue from '../components/Queue';
 import RoomJoiner from '../components/RoomJoiner';
+import RoomSelector from '../components/RoomSelector';
 import SpatialAudioBackground from '../components/SpatialAudioBackground';
 import TopBar from '../components/TopBar';
 import UserGrid from '../components/UserGrid';
 import WebSocketManager from '../components/WebSocketManager';
 import { useGlobalStore } from '../store/global';
+import { useRoomStore } from '../store/room';
 
 export default function Home() {
   const isInitingSystem = useGlobalStore((state) => state.isInitingSystem);
   const audioSources = useGlobalStore((state) => state.audioSources);
   const initializeAudio = useGlobalStore((state) => state.initializeAudio);
+  const roomId = useRoomStore((state) => state.roomId);
   const [hasInitialized, setHasInitialized] = useState(false);
   
   // Initialize audio system only once when component mounts
@@ -47,6 +50,16 @@ export default function Home() {
       <>
         <AudioInitializer />
         <LoadingScreen />
+      </>
+    );
+  }
+
+  // Show room selector if no room is selected
+  if (!roomId) {
+    return (
+      <>
+        <Toaster position="top-right" />
+        <RoomSelector />
       </>
     );
   }

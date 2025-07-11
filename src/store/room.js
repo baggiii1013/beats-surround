@@ -18,14 +18,13 @@ export const useRoomStore = create((set, get) => ({
     return newRoomId;
   },
   
-  // Initialize client-side only values
+  // Initialize client-side only values (without auto room creation)
   initialize: () => {
     if (typeof window !== 'undefined') {
-      const roomId = generateRoomId();
       const userId = Math.random().toString(36).substring(2, 15);
       const username = `User_${Math.random().toString(36).substring(2, 5)}`;
       
-      set({ roomId, userId, username });
+      set({ userId, username });
     }
   },
 }));
