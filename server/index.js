@@ -3,39 +3,60 @@ const WebSocket = require('ws');
 const http = require('http');
 const cors = require('cors');
 const { v4: uuidv4 } = require('uuid');
-
+const dotenv = require('dotenv')
 const app = express();
 const server = http.createServer(app);
+
+dotenv.config();
+
+// Optimize HTTP server for low latency
+server.keepAliveTimeout = 5000;
+server.headersTimeout = 6000;
+server.timeout = 10000;
 
 // Enable CORS for all routes
 app.use(cors({
   origin: process.env.NODE_ENV === 'production' 
-    ? ['https://beats-surround.vercel.app/'] 
-    : ['http://localhost:3000'],
-  credentials: true
+    ? [ 'https://beats-surround.vercel.app'] 
+    : ['http://localhost:3000', 'http://127.0.0.1:3000'],
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
+  optionsSuccessStatus: 200
 }));
 
-app.use(express.json());
+app.use(express.json({ limit: '50mb' }));
 
-// WebSocket server
+// WebSocket server with ultra-low latency optimizations
 const wss = new WebSocket.Server({ 
   server,
-  path: '/ws'
+  path: '/ws',
+  perMessageDeflate: false, // Disable compression for lower latency
+  maxPayload: 50 * 1024 * 1024, // 50MB max payload
+  clientTracking: true,
+  handleProtocols: () => false // Disable protocol negotiation
 });
 
 // Room management
 const rooms = new Map();
 const clients = new Map();
 
-// Timing configuration
-const SCHEDULE_TIME_MS = 750; // How far in advance to schedule actions
-const MAX_NTP_MEASUREMENTS = 40;
+// Timing configuration - Ultra low latency
+const SCHEDULE_TIME_MS = 50; // Reduced from 750ms to 50ms for ultra-low latency
+const MAX_NTP_MEASUREMENTS = 10; // Reduced for faster NTP sync
+const SPATIAL_UPDATE_INTERVAL = 16; // 60fps updates (16ms) instead of 100ms
+const MESSAGE_BATCH_SIZE = 10; // Batch messages for efficiency
+const HIGH_FREQUENCY_MODE = true; // Enable high frequency optimizations
 
 // Utility functions
-const epochNow = () => Date.now();
+const epochNow = () => {
+  // Use high-resolution time for sub-millisecond precision
+  const hrTime = process.hrtime.bigint();
+  return Number(hrTime / 1000000n); // Convert nanoseconds to milliseconds
+};
 
 const calculateWaitTimeMilliseconds = (targetServerTime, offsetEstimate) => {
-  const now = Date.now();
+  const now = epochNow();
   const serverNow = now + offsetEstimate;
   return Math.max(0, targetServerTime - serverNow);
 };
@@ -43,6 +64,45 @@ const calculateWaitTimeMilliseconds = (targetServerTime, offsetEstimate) => {
 const generateRoomId = () => {
   return Math.random().toString(36).substring(2, 8).toUpperCase();
 };
+
+// Message queue for batching
+class MessageQueue {
+  constructor() {
+    this.queue = new Map(); // clientId -> messages[]
+    this.processingId = null;
+  }
+
+  add(clientId, message) {
+    if (!this.queue.has(clientId)) {
+      this.queue.set(clientId, []);
+    }
+    this.queue.get(clientId).push(message);
+    
+    // Schedule immediate processing in high frequency mode
+    if (HIGH_FREQUENCY_MODE && !this.processingId) {
+      this.processingId = setImmediate(() => this.flush());
+    }
+  }
+
+  flush() {
+    this.processingId = null;
+    for (const [clientId, messages] of this.queue) {
+      if (messages.length > 0) {
+        // Find client and send batched messages
+        for (const [ws, clientData] of clients) {
+          if (clientData.clientId === clientId && ws.readyState === WebSocket.OPEN) {
+            // Send all messages immediately
+            messages.forEach(msg => ws.send(msg));
+            break;
+          }
+        }
+        messages.length = 0; // Clear processed messages
+      }
+    }
+  }
+}
+
+const messageQueue = new MessageQueue();
 
 // Room class to manage room state
 class Room {
@@ -148,11 +208,29 @@ class Room {
 
   broadcast(message, excludeClientId = null) {
     const messageStr = JSON.stringify(message);
-    this.clients.forEach((client, clientId) => {
-      if (clientId !== excludeClientId && client.ws.readyState === WebSocket.OPEN) {
-        client.ws.send(messageStr);
-      }
-    });
+    
+    if (HIGH_FREQUENCY_MODE) {
+      // Ultra-low latency: send immediately without queuing
+      this.clients.forEach((client, clientId) => {
+        if (clientId !== excludeClientId && client.ws.readyState === WebSocket.OPEN) {
+          // Use setImmediate for non-blocking send
+          setImmediate(() => {
+            try {
+              client.ws.send(messageStr);
+            } catch (error) {
+              // Handle send errors silently
+            }
+          });
+        }
+      });
+    } else {
+      // Standard broadcast
+      this.clients.forEach((client, clientId) => {
+        if (clientId !== excludeClientId && client.ws.readyState === WebSocket.OPEN) {
+          client.ws.send(messageStr);
+        }
+      });
+    }
   }
 
   getClientsList() {
@@ -225,13 +303,18 @@ const handleMessage = (ws, message, clientData) => {
 };
 
 const handleNTPRequest = (ws, data, t1) => {
+  const t2 = epochNow(); // High-precision timestamp
   const response = {
     type: 'NTP_RESPONSE',
     t0: data.t0,
     t1: t1,
-    t2: epochNow()
+    t2: t2
   };
-  ws.send(JSON.stringify(response));
+  
+  // Send immediately without any delay
+  if (ws.readyState === WebSocket.OPEN) {
+    ws.send(JSON.stringify(response));
+  }
 };
 
 const handlePlayRequest = (room, data) => {
@@ -296,12 +379,12 @@ const handleSetPosition = (room, data, clientId) => {
 const handleSpatialAudioStart = (room) => {
   if (room.intervalId) return; // Already running
   
-  // Start spatial audio updates
+  // Start ultra-high frequency spatial audio updates
   let loopCount = 0;
   room.intervalId = setInterval(() => {
     updateSpatialAudio(room, loopCount);
     loopCount++;
-  }, 100); // Update every 100ms
+  }, SPATIAL_UPDATE_INTERVAL); // 60fps updates for smooth spatial audio
 };
 
 const handleSpatialAudioStop = (room) => {
@@ -366,7 +449,7 @@ const updateSpatialAudio = (room, loopCount) => {
     
     gains[client.clientId] = {
       gain: gain,
-      rampTime: 0.25
+      rampTime: 0.016 // Ultra-smooth 16ms ramp time for 60fps
     };
   });
   
@@ -377,14 +460,18 @@ const updateSpatialAudio = (room, loopCount) => {
       listeningSource: room.listeningSource,
       gains: gains
     },
-    serverTimeToExecute: epochNow() + 100 // Small delay for smooth updates
+    serverTimeToExecute: epochNow() + SPATIAL_UPDATE_INTERVAL // Minimal delay
   };
   
   room.broadcast(message);
 };
 
-// WebSocket connection handling
+// WebSocket connection handling with ultra-low latency optimizations
 wss.on('connection', (ws, req) => {
+  // Optimize WebSocket for low latency
+  ws._socket.setNoDelay(true); // Disable Nagle's algorithm
+  ws._socket.setKeepAlive(true, 30000); // Keep connection alive
+  
   const url = new URL(req.url, `http://${req.headers.host}`);
   const roomId = url.searchParams.get('roomId');
   const username = url.searchParams.get('username');
@@ -412,8 +499,8 @@ wss.on('connection', (ws, req) => {
   room.addClient(clientId, clientData);
   clients.set(ws, clientData);
   
-  // Send client their ID and room info
-  ws.send(JSON.stringify({
+  // Send client their ID and room info immediately
+  const connectionMessage = JSON.stringify({
     type: 'CONNECTION_ESTABLISHED',
     clientId: clientId,
     roomId: roomId,
@@ -423,7 +510,10 @@ wss.on('connection', (ws, req) => {
       trackPosition: room.trackPosition,
       clients: room.getClientsList()
     }
-  }));
+  });
+  
+  // Send immediately
+  ws.send(connectionMessage);
   
   // Broadcast updated client list to room
   const clientUpdateMessage = {
@@ -432,9 +522,10 @@ wss.on('connection', (ws, req) => {
   };
   room.broadcast(clientUpdateMessage);
   
-  // Handle messages
+  // Handle messages with minimal overhead
   ws.on('message', (message) => {
-    handleMessage(ws, message, clientData);
+    // Process immediately without any buffering
+    setImmediate(() => handleMessage(ws, message, clientData));
   });
   
   // Handle disconnection
@@ -517,14 +608,43 @@ app.get('/health', (req, res) => {
 
 const PORT = process.env.PORT || 8080;
 
+// Configure server for ultra-low latency
 server.listen(PORT, () => {
-  // Server started successfully
+  // Optimize Node.js for low latency
+  if (process.env.NODE_ENV === 'production') {
+    // Production optimizations
+    process.env.UV_THREADPOOL_SIZE = Math.max(4, require('os').cpus().length);
+    
+    // Set high priority for the process
+    try {
+      process.priority = -10; // High priority
+    } catch (e) {
+      // Ignore if unable to set priority
+    }
+  }
+  
+  // Start message queue flushing for high frequency mode
+  if (HIGH_FREQUENCY_MODE) {
+    setInterval(() => messageQueue.flush(), 1); // Flush every 1ms
+  }
 });
 
-// Graceful shutdown
+// Graceful shutdown with immediate cleanup
 process.on('SIGTERM', () => {
   rooms.forEach(room => room.cleanup());
-  server.close(() => {
-    process.exit(0);
+  wss.close(() => {
+    server.close(() => {
+      process.exit(0);
+    });
+  });
+});
+
+// Additional low-latency optimizations
+process.on('SIGINT', () => {
+  rooms.forEach(room => room.cleanup());
+  wss.close(() => {
+    server.close(() => {
+      process.exit(0);
+    });
   });
 });
