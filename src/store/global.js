@@ -283,11 +283,6 @@ export const useGlobalStore = create((set, get) => {
               expectedArtist: audioInfo.expectedArtist
             });
             
-            // Temporary debugging
-            if (typeof window !== 'undefined') {
-              console.log(`🎵 Loaded: "${audioSource.name}" from ${audioInfo.url}`);
-            }
-            
             loadedSources.push({
               ...audioSource,
               requiresUserInteraction: audioContext.state === 'suspended', // Mark if context is suspended
@@ -327,11 +322,6 @@ export const useGlobalStore = create((set, get) => {
         // Update the store state with all loaded sources and enhanced audio system
         const syncEngine = getSyncEngine();
         const audioController = getAudioController(audioContext);
-        
-        // Temporary debugging
-        if (typeof window !== 'undefined') {
-          console.log(`📋 Final track list:`, loadedSources.map((s, i) => `${i+1}. "${s.name}" (ID: ${s.id})`));
-        }
         
         set({
           audioSources: loadedSources,
