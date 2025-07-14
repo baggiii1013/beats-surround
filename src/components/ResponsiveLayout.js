@@ -5,6 +5,7 @@ import AudioUploader from './AudioUploader';
 import BottomNavigation from './BottomNavigation';
 import Player from './Player';
 import Queue from './Queue';
+import RoomInfo from './RoomInfo';
 import RoomJoiner from './RoomJoiner';
 import TopBar from './TopBar';
 import UserGrid from './UserGrid';
@@ -41,8 +42,9 @@ export default function ResponsiveLayout() {
         {/* Top Navigation */}
         <TopBar />
         
-        {/* Main Content - Just the Player */}
-        <div className="h-[calc(100vh-8rem)] overflow-y-auto pb-4">
+        {/* Main Content - Player with Room Info */}
+        <div className="h-[calc(100vh-8rem)] overflow-y-auto pb-4 px-4">
+          <RoomInfo className="mb-4 mt-4" />
           <Player />
         </div>
         
@@ -76,9 +78,10 @@ export default function ResponsiveLayout() {
           <Player />
         </div>
         
-        {/* Right Sidebar - Spatial Audio & Room */}
+        {/* Right Sidebar - Room Info, Spatial Audio & Users */}
         <div className="w-1/3 border-l border-gray-700 flex flex-col">
           <div className="p-4 border-b border-gray-700">
+            <RoomInfo className="mb-4" />
             <RoomJoiner />
           </div>
           <div className="flex-1">

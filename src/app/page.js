@@ -17,7 +17,13 @@ export default function Home() {
   const audioSources = useGlobalStore((state) => state.audioSources);
   const initializeAudio = useGlobalStore((state) => state.initializeAudio);
   const roomId = useRoomStore((state) => state.roomId);
+  const initialize = useRoomStore((state) => state.initialize);
   const [hasInitialized, setHasInitialized] = useState(false);
+  
+  // Initialize room store
+  useEffect(() => {
+    initialize();
+  }, [initialize]);
   
   // Initialize audio system only once when component mounts
   useEffect(() => {
@@ -28,7 +34,6 @@ export default function Home() {
       setTimeout(() => {
         initializeAudio().catch(() => {
           // If initialization fails, still mark as initialized to prevent retry loops
-          console.warn('Audio initialization failed');
         });
       }, 50);
     }
@@ -41,6 +46,7 @@ export default function Home() {
     }
   }, [isInitingSystem, audioSources.length]);
   
+  // Show loading screen while initializing
   if (isInitingSystem) {
     return (
       <>

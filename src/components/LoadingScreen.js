@@ -82,7 +82,6 @@ export default function LoadingScreen() {
   useEffect(() => {
     const safetyTimeout = setTimeout(() => {
       if (isInitingSystem && !hasAutoRedirected) {
-        console.warn('Safety timeout triggered - forcing exit from loading screen');
         setHasAutoRedirected(true);
         useGlobalStore.setState({ isInitingSystem: false });
       }

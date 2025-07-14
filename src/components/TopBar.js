@@ -5,6 +5,7 @@ import { Users, Volume2, Wifi } from 'lucide-react';
 import { useEffect } from 'react';
 import { useGlobalStore } from '../store/global';
 import { useRoomStore } from '../store/room';
+import ConnectionStatusIndicator from './ConnectionStatusIndicator';
 import SyncQualityIndicator from './SyncQualityIndicator';
 import { Badge } from './ui/badge';
 import { Button } from './ui/button';
@@ -52,10 +53,19 @@ export default function TopBar() {
           <h1 className="text-lg lg:text-xl font-bold text-white">BeatsSurround</h1>
         </motion.div>
         
-        <SyncQualityIndicator className="text-sm hidden sm:block" />
+        {/* Connection and Sync indicators */}
+        <div className="hidden sm:flex items-center gap-3">
+          <ConnectionStatusIndicator />
+          <SyncQualityIndicator className="text-sm" />
+        </div>
+        
+        {/* Mobile connection indicator */}
+        <div className="flex sm:hidden">
+          <ConnectionStatusIndicator showDetails={false} />
+        </div>
       </div>
 
-      {/* Center - Room info (Desktop only) */}
+      {/* Center - Room info and detailed connection status (Desktop only) */}
       {roomId && (
         <div className="hidden lg:flex items-center gap-4">
           <div className="flex items-center gap-2">
@@ -78,6 +88,9 @@ export default function TopBar() {
               {connectedClients.length} {/* Current user count */}
             </Badge>
           </div>
+          
+          {/* Detailed connection info on desktop */}
+          <ConnectionStatusIndicator showDetails={true} className="text-xs" />
           
           {isSpatialAudioEnabled && (
             <Badge className="text-xs bg-blue-500/20 text-blue-300 border-blue-500/30">

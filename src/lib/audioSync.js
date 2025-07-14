@@ -17,7 +17,6 @@ export class AudioSyncEngine {
   addNTPMeasurement(measurement) {
     // Filter out obvious outliers (RTT > 1000ms)
     if (measurement.roundTripDelay > 1000) {
-      console.warn('Discarding NTP measurement with high RTT:', measurement.roundTripDelay);
       return;
     }
 
@@ -343,7 +342,7 @@ export const measureNetworkLatency = async (serverUrl, samples = 5) => {
       const rtt = performance.now() - start;
       measurements.push(rtt);
     } catch (error) {
-      console.warn('Network latency measurement failed:', error);
+      // Network latency measurement failed
     }
     
     // Wait between measurements

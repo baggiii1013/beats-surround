@@ -74,14 +74,19 @@ export default function Player() {
 
   const handlePlay = useCallback(async () => {
     // Try to resume audio context first (for browser autoplay restrictions)
-    await resumeAudioContext();
+    const resumed = await resumeAudioContext();
+    
+    if (!resumed && audioPlayer?.suspended) {
+      // Audio context couldn't be resumed - show error
+      return;
+    }
     
     if (isPlaying) {
       broadcastPause();
     } else {
       broadcastPlay(sliderPosition);
     }
-  }, [isPlaying, broadcastPause, broadcastPlay, sliderPosition, resumeAudioContext]);
+  }, [isPlaying, broadcastPause, broadcastPlay, sliderPosition, resumeAudioContext, audioPlayer]);
 
   const handleSkipBack = useCallback(() => {
     if (!isShuffled) {
@@ -147,7 +152,9 @@ export default function Player() {
   }, [updateVolume, isMuted]);
 
   const handleVolumeCommit = useCallback((finalVolume) => {
-    // Optional: Add any logic for when volume adjustment is complete
+    // Store the volume in global state for persistence
+    const store = useGlobalStore.getState();
+    store.volume = finalVolume / 100;
   }, []);
 
   const toggleMute = useCallback(() => {
@@ -166,9 +173,13 @@ export default function Player() {
   // Initialize volume when audio player is available
   useEffect(() => {
     if (audioPlayer?.gainNode) {
-      updateVolume(volume);
+      // Set initial volume from global state or default
+      const globalState = useGlobalStore.getState();
+      const initialVolume = (globalState.volume || 0.5) * 100;
+      setVolume(initialVolume);
+      updateVolume(initialVolume);
     }
-  }, [audioPlayer, updateVolume, volume]);
+  }, [audioPlayer, updateVolume]);
 
   return (
     <div className="flex-1 flex items-center justify-center p-4 lg:p-8">

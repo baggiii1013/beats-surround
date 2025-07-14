@@ -48,6 +48,23 @@ const initialState = {
     lastUpdate: 0
   },
   
+  // Connection status monitoring
+  connectionStatus: {
+    isConnected: false,
+    connectionStrength: 'unknown', // 'excellent', 'good', 'fair', 'poor', 'unknown'
+    ping: 0,
+    packetLoss: 0,
+    reconnectCount: 0,
+    lastReconnectTime: 0,
+    uptime: 0,
+    connectionStartTime: 0,
+    bytesReceived: 0,
+    bytesSent: 0,
+    messagesReceived: 0,
+    messagesSent: 0,
+    lastPingTime: 0
+  },
+  
   // Room and users
   connectedClients: [],
   
@@ -86,7 +103,7 @@ const getWaitTimeSeconds = (state, targetServerTime) => {
   return waitTimeMilliseconds / 1000;
 };
 
-const loadAudioSourceUrl = async ({ url, audioContext }) => {
+const loadAudioSourceUrl = async ({ url, audioContext, expectedTitle, expectedArtist }) => {
   const response = await fetch(url);
   
   if (!response.ok) {
@@ -101,14 +118,18 @@ const loadAudioSourceUrl = async ({ url, audioContext }) => {
   // Decode audio data
   const audioBuffer = await audioContext.decodeAudioData(arrayBuffer.slice());
   
+  // Use expected values as fallback if metadata is missing or unclear
+  const finalTitle = metadata.title || expectedTitle || extractDefaultFileName(url);
+  const finalArtist = metadata.artist || expectedArtist || 'Unknown Artist';
+  
   return {
-    name: metadata.title,
-    artist: metadata.artist,
+    name: finalTitle,
+    artist: finalArtist,
     album: metadata.album,
     albumArtist: metadata.albumArtist,
     year: metadata.year,
     genre: metadata.genre,
-    coverArt: metadata.coverArt || createPlaceholderCoverArt(metadata.title, metadata.artist),
+    coverArt: metadata.coverArt || createPlaceholderCoverArt(finalTitle, finalArtist),
     duration: audioBuffer.duration,
     audioBuffer,
     id: url,
@@ -129,18 +150,43 @@ const initializeAudioContext = () => {
     throw new Error('AudioContext is not supported in this browser');
   }
   
-  const audioContext = new AudioContextClass();
+  // Safari/iOS specific optimizations
+  const audioContext = new AudioContextClass({
+    latencyHint: 'interactive',
+    sampleRate: 44100, // Standardize sample rate for better compatibility
+  });
+  
+  // Safari/iOS audio session optimization
+  if (typeof navigator !== 'undefined' && navigator.audioSession) {
+    try {
+      navigator.audioSession.type = 'playback';
+    } catch (e) {
+      // Ignore if not available
+    }
+  }
   
   return audioContext;
 };
 
 const fetchDefaultAudioSources = async () => {
   // Return demo audio sources from public/audio directory
-  // Names will be extracted from metadata
+  // Names will be extracted from metadata with explicit ordering
   return [
-    { url: '/audio/Sia%20-%20Cheap%20Thrills%20(Performance%20Edit).flac' },
-    { url: '/audio/Cheap%20Thrills%20feat%20Sean%20Paul%20-%20Sia%20Sean%20Paul%20.flac' },
-    { url: '/audio/Sunflower%20-%20Spider-Man%20Into%20the%20Spider-Verse%20-%20Post%20Malone%20Swae%20Lee%20.flac' },
+    { 
+      url: '/audio/Sia%20-%20Cheap%20Thrills%20(Performance%20Edit).flac',
+      expectedTitle: 'Cheap Thrills (Performance Edit)',
+      expectedArtist: 'Sia'
+    },
+    { 
+      url: '/audio/Cheap%20Thrills%20feat%20Sean%20Paul%20-%20Sia%20Sean%20Paul%20.flac',
+      expectedTitle: 'Cheap Thrills (feat. Sean Paul)',
+      expectedArtist: 'Sia, Sean Paul'
+    },
+    { 
+      url: '/audio/Sunflower%20-%20Spider-Man%20Into%20the%20Spider-Verse%20-%20Post%20Malone%20Swae%20Lee%20.flac',
+      expectedTitle: 'Sunflower - Spider-Man: Into the Spider-Verse',
+      expectedArtist: 'Post Malone, Swae Lee'
+    },
   ];
 };
 
@@ -154,6 +200,25 @@ const extractDefaultFileName = (url) => {
   const segments = url.split('/');
   const filename = segments[segments.length - 1];
   return filename.split('.')[0] || 'Unknown Track';
+};
+
+// Helper function for calculating NTP offset estimates
+const calculateOffsetEstimate = (measurements) => {
+  if (measurements.length === 0) {
+    return { averageOffset: 0, averageRoundTrip: 0 };
+  }
+
+  // Sort by round trip time and take the best 50%
+  const sortedMeasurements = [...measurements].sort((a, b) => a.roundTripDelay - b.roundTripDelay);
+  const bestMeasurements = sortedMeasurements.slice(0, Math.ceil(sortedMeasurements.length * 0.5));
+
+  const totalOffset = bestMeasurements.reduce((sum, m) => sum + m.clockOffset, 0);
+  const totalRoundTrip = bestMeasurements.reduce((sum, m) => sum + m.roundTripDelay, 0);
+
+  return {
+    averageOffset: totalOffset / bestMeasurements.length,
+    averageRoundTrip: totalRoundTrip / bestMeasurements.length,
+  };
 };
 
 export const useGlobalStore = create((set, get) => {
@@ -213,8 +278,16 @@ export const useGlobalStore = create((set, get) => {
           try {
             const audioSource = await loadAudioSourceUrl({ 
               url: audioInfo.url, 
-              audioContext 
+              audioContext,
+              expectedTitle: audioInfo.expectedTitle,
+              expectedArtist: audioInfo.expectedArtist
             });
+            
+            // Temporary debugging
+            if (typeof window !== 'undefined') {
+              console.log(`🎵 Loaded: "${audioSource.name}" from ${audioInfo.url}`);
+            }
+            
             loadedSources.push({
               ...audioSource,
               requiresUserInteraction: audioContext.state === 'suspended', // Mark if context is suspended
@@ -254,6 +327,11 @@ export const useGlobalStore = create((set, get) => {
         // Update the store state with all loaded sources and enhanced audio system
         const syncEngine = getSyncEngine();
         const audioController = getAudioController(audioContext);
+        
+        // Temporary debugging
+        if (typeof window !== 'undefined') {
+          console.log(`📋 Final track list:`, loadedSources.map((s, i) => `${i+1}. "${s.name}" (ID: ${s.id})`));
+        }
         
         set({
           audioSources: loadedSources,
@@ -328,6 +406,26 @@ export const useGlobalStore = create((set, get) => {
     }
   };
 
+  // Client-side initialization - called after component mount
+  if (typeof window !== 'undefined') {
+    // Safari/iOS specific setup
+    if (window.navigator?.audioSession) {
+      try {
+        window.navigator.audioSession.type = 'playback';
+      } catch (e) {
+        // Ignore if not available
+      }
+    }
+
+    // Initialize audio system with a slight delay to ensure DOM is ready
+    setTimeout(() => {
+      const state = get();
+      if (state.audioSources.length === 0 && !state.isInitingSystem) {
+        initializeAudio();
+      }
+    }, 100);
+  }
+
   return {
     // Initialize with initialState
     ...initialState,
@@ -340,14 +438,31 @@ export const useGlobalStore = create((set, get) => {
       const state = get();
       if (state.audioPlayer?.audioContext) {
         const { audioContext } = state.audioPlayer;
-        if (audioContext.state === 'suspended') {
+        
+        // Check multiple suspended states (Safari can have different states)
+        if (audioContext.state === 'suspended' || audioContext.state === 'interrupted') {
           try {
             await audioContext.resume();
+            
+            // Safari-specific: Re-create gain node if needed
+            if (!state.audioPlayer.gainNode || state.audioPlayer.gainNode.context !== audioContext) {
+              const gainNode = audioContext.createGain();
+              gainNode.gain.value = state.volume || 0.5;
+              gainNode.connect(audioContext.destination);
+              
+              set({
+                audioPlayer: {
+                  ...state.audioPlayer,
+                  gainNode,
+                  suspended: false,
+                }
+              });
+            }
             
             // Update the audio sources to remove the requiresUserInteraction flag
             const updatedAudioSources = state.audioSources.map(source => ({
               ...source,
-              requiresUserInteraction: false, // Remove the user interaction requirement
+              requiresUserInteraction: false,
             }));
             
             // Update the store to mark audio as no longer suspended
@@ -359,11 +474,44 @@ export const useGlobalStore = create((set, get) => {
               },
             });
             
+            return true; // Successfully resumed
+            
           } catch (error) {
-            // Failed to resume AudioContext
+            // Safari fallback: Try to create a new audio context
+            try {
+              const newAudioContext = initializeAudioContext();
+              if (newAudioContext.state === 'running') {
+                const gainNode = newAudioContext.createGain();
+                gainNode.gain.value = state.volume || 0.5;
+                gainNode.connect(newAudioContext.destination);
+                
+                set({
+                  audioPlayer: {
+                    ...state.audioPlayer,
+                    audioContext: newAudioContext,
+                    gainNode,
+                    suspended: false,
+                  }
+                });
+                
+                return true;
+              }
+            } catch (fallbackError) {
+              // Silent fallback
+            }
           }
+        } else if (audioContext.state === 'running') {
+          // Already running, just ensure proper state
+          set({
+            audioPlayer: {
+              ...state.audioPlayer,
+              suspended: false,
+            }
+          });
+          return true;
         }
       }
+      return false; // Failed to resume
     },
 
     // Audio control methods
@@ -387,40 +535,73 @@ export const useGlobalStore = create((set, get) => {
       }
 
       // Fallback to legacy method
-      const { sourceNode, audioContext, gainNode } = getAudioPlayer(state);
+      const { sourceNode: oldSourceNode, audioContext, gainNode } = getAudioPlayer(state);
 
       // Before any audio playback, ensure the context is running
       if (audioContext.state !== "running") {
-        toast.error("Audio context is suspended. Please try again.");
+        audioContext.resume().then(() => {
+          // Retry play after context is resumed
+          state.playAudio({ offset, when: Math.max(0, when - 0.1), audioIndex });
+        }).catch(() => {
+          toast.error("Audio context is suspended. Please try again.");
+        });
         return;
       }
 
-      // Stop any existing source node before creating a new one
-      try {
-        sourceNode.stop();
-      } catch (_) {}
+      // CRITICAL: Stop and disconnect any existing source node
+      if (oldSourceNode) {
+        try {
+          oldSourceNode.stop();
+          oldSourceNode.disconnect();
+        } catch (_) {
+          // Ignore errors if already stopped
+        }
+      }
 
       const startTime = audioContext.currentTime + when;
       const audioBuffer = state.audioSources[audioIndex].audioBuffer;
 
-      // Create a new source node
+      if (!audioBuffer) {
+        return;
+      }
+
+      // Create a NEW source node (Web Audio API requirement)
       const newSourceNode = audioContext.createBufferSource();
       newSourceNode.buffer = audioBuffer;
       newSourceNode.connect(gainNode);
 
-      // Handle track ending
+      // Enhanced onended handler with better logic
       newSourceNode.onended = () => {
         const currentState = get();
-        if (currentState.isPlaying) {
-          // Auto-skip to next track
-          currentState.skipToNextTrack(true);
+        const { audioPlayer: currentPlayer, isPlaying: currentlyIsPlaying } = currentState;
+
+        // Only process if this source node is still the current one and we're still playing
+        if (currentlyIsPlaying && currentPlayer?.sourceNode === newSourceNode) {
+          const { audioContext } = currentPlayer;
+          
+          // Check if the buffer naturally reached its end
+          const expectedEndTime = currentState.playbackStartTime + 
+                                  (currentState.duration - currentState.playbackOffset);
+          const endedNaturally = Math.abs(audioContext.currentTime - expectedEndTime) < 0.5;
+
+          if (endedNaturally) {
+            // Set currentTime to duration to show completion
+            set({ currentTime: currentState.duration });
+            // Auto-skip to next track
+            setTimeout(() => currentState.skipToNextTrack(true), 100);
+          }
         }
       };
 
-      // Start playback
-      newSourceNode.start(startTime, offset);
+      // Start playback with proper offset handling
+      try {
+        newSourceNode.start(startTime, offset);
+      } catch (error) {
+        toast.error("Failed to start audio playback");
+        return;
+      }
 
-      // Update player state
+      // Update player state with new source node and timing info
       set((state) => ({
         ...state,
         isPlaying: true,
@@ -442,22 +623,37 @@ export const useGlobalStore = create((set, get) => {
         const { audioContext } = getAudioPlayer(state);
         const stopTime = audioContext.currentTime + when;
         state.audioController.pause(stopTime);
-        set({ isPlaying: false });
+        
+        // Update current time to the pause position
+        const currentPos = state.getCurrentTrackPosition();
+        set({ 
+          isPlaying: false,
+          currentTime: currentPos 
+        });
         return;
       }
 
       // Fallback to legacy method
       const { sourceNode, audioContext } = getAudioPlayer(state);
 
+      // Calculate current position before stopping
+      const currentTime = audioContext.currentTime;
+      const elapsed = currentTime - state.playbackStartTime;
+      const currentPosition = Math.max(0, state.playbackOffset + elapsed);
+
       const stopTime = audioContext.currentTime + when;
       
       try {
         sourceNode.stop(stopTime);
+        sourceNode.disconnect();
       } catch (error) {
-        // Failed to stop audio source
+        // Source may already be stopped
       }
 
-      set({ isPlaying: false });
+      set({ 
+        isPlaying: false,
+        currentTime: Math.min(currentPosition, state.duration)
+      });
     },
 
     // Track selection and management
@@ -465,24 +661,31 @@ export const useGlobalStore = create((set, get) => {
       const state = get();
       const wasPlaying = state.isPlaying;
 
-      // Stop current playback
-      if (wasPlaying) {
+      // Stop current playback COMPLETELY
+      if (state.audioPlayer?.sourceNode) {
         try {
-          state.audioPlayer?.sourceNode.stop();
-        } catch (_) {}
+          // Stop the current source node immediately
+          state.audioPlayer.sourceNode.stop();
+          state.audioPlayer.sourceNode.disconnect();
+        } catch (_) {
+          // Ignore errors if already stopped
+        }
       }
 
       // Find the selected audio source
       const selectedSource = state.audioSources.find(source => source.id === audioId);
       
+      // Reset all timing state when changing tracks
       set({ 
         selectedAudioId: audioId,
         isPlaying: false,
         currentTime: 0,
-        duration: selectedSource ? selectedSource.audioBuffer.duration : 0,
+        playbackStartTime: 0,
+        playbackOffset: 0,
+        duration: selectedSource ? selectedSource.audioBuffer?.duration || 0 : 0,
       });
 
-      return !wasPlaying; // Return true if it was NOT playing before
+      return wasPlaying; // Return true if it WAS playing before
     },
 
     findAudioIndexById: (audioId) => {
@@ -546,18 +749,22 @@ export const useGlobalStore = create((set, get) => {
       if (isShuffled) {
         do {
           nextIndex = Math.floor(Math.random() * audioSources.length);
-        } while (nextIndex === currentIndex);
+        } while (nextIndex === currentIndex && audioSources.length > 1);
       } else {
         nextIndex = (currentIndex + 1) % audioSources.length;
       }
 
       const nextAudioId = audioSources[nextIndex].id;
-      const wasPlaying = state.setSelectedAudioId(nextAudioId);
+      
+      // setSelectedAudioId now returns true if music WAS playing before
+      const wasPlayingBeforeSkip = state.setSelectedAudioId(nextAudioId);
 
-      if (wasPlaying || isAutoplay) {
+      // If music was playing before skip, or this is autoplay, start playing the new track
+      if (wasPlayingBeforeSkip || isAutoplay) {
+        // Small delay to ensure state is updated
         setTimeout(() => {
           state.broadcastPlay(0);
-        }, 100);
+        }, 50);
       }
     },
 
@@ -571,12 +778,14 @@ export const useGlobalStore = create((set, get) => {
 
       const prevIndex = currentIndex === 0 ? audioSources.length - 1 : currentIndex - 1;
       const prevAudioId = audioSources[prevIndex].id;
-      const wasPlaying = state.setSelectedAudioId(prevAudioId);
+      
+      // setSelectedAudioId now returns true if music WAS playing before  
+      const wasPlayingBeforeSkip = state.setSelectedAudioId(prevAudioId);
 
-      if (wasPlaying) {
+      if (wasPlayingBeforeSkip) {
         setTimeout(() => {
           state.broadcastPlay(0);
-        }, 100);
+        }, 50);
       }
     },
 
@@ -585,10 +794,25 @@ export const useGlobalStore = create((set, get) => {
     // Current time tracking
     getCurrentTrackPosition: () => {
       const state = get();
-      if (!state.audioController) return state.currentTime;
       
-      // Use high-precision position tracking from AudioController
-      return state.audioController.getCurrentPosition();
+      if (!state.isPlaying) {
+        return state.currentTime;
+      }
+      
+      if (state.audioController) {
+        // Use high-precision position tracking from AudioController
+        return state.audioController.getCurrentPosition();
+      }
+      
+      // Fallback: calculate position based on audio context time
+      if (state.audioPlayer?.audioContext && state.playbackStartTime > 0) {
+        const { audioContext } = state.audioPlayer;
+        const elapsed = audioContext.currentTime - state.playbackStartTime;
+        const position = Math.max(0, state.playbackOffset + elapsed);
+        return Math.min(position, state.duration);
+      }
+      
+      return state.currentTime;
     },
 
     // Audio source management
@@ -617,305 +841,243 @@ export const useGlobalStore = create((set, get) => {
       }
     },
 
-    // Upload tracking
-    addToUploadHistory: (name, id) =>
-      set((state) => ({
-        uploadHistory: [...state.uploadHistory, { name, timestamp: Date.now(), id }],
-      })),
-
-    hasDownloadedAudio: (id) => {
-      const state = get();
-      return state.downloadedAudioIds.has(id);
-    },
-
-    markAudioAsDownloaded: (id) => {
-      set((state) => {
-        const newSet = new Set(state.downloadedAudioIds);
-        newSet.add(id);
-        return { downloadedAudioIds: newSet };
-      });
-    },
-
-    // System state
-    setIsInitingSystem: async (isIniting) => {
-      if (!isIniting) {
-        const state = get();
-        const audioContext = state.audioPlayer?.audioContext;
-        if (audioContext && audioContext.state === "suspended") {
-          try {
-            await audioContext.resume();
-          } catch (err) {
-            // Failed to resume AudioContext
-          }
-        }
-      }
-      set({ isInitingSystem: isIniting });
-    },
-
-    // Spatial audio
-    setIsSpatialAudioEnabled: (isEnabled) => set({ isSpatialAudioEnabled: isEnabled }),
-    
-    updateListeningSource: ({ x, y }) => {
-      set({ listeningSourcePosition: { x, y } });
-    },
-
-    setIsDraggingListeningSource: (isDragging) => set({ isDraggingListeningSource: isDragging }),
-
-    // Connected clients
-    setConnectedClients: (clients) => set({ connectedClients: clients }),
-
-    // Socket management
+    // WebSocket and synchronization
     setSocket: (socket) => set({ socket }),
 
-    // Enhanced WebSocket synchronization methods
-    setNtpMeasurements: (measurements) => {
-      set({ ntpMeasurements: measurements });
-      
-      // Update sync engine with latest measurement
-      const syncEngine = getSyncEngine();
-      if (measurements.length > 0) {
-        const latestMeasurement = measurements[measurements.length - 1];
-        syncEngine.addNTPMeasurement(latestMeasurement);
-        
-        // Update store with sync engine status
-        const syncStatus = syncEngine.getSyncStatus();
-        set({ 
-          offsetEstimate: syncStatus.clockOffset,
-          isSynced: syncStatus.isSync,
-          syncQuality: syncStatus.quality 
-        });
-      }
-    },
-    
+    // Individual setter functions for WebSocket manager compatibility
+    setNtpMeasurements: (measurements) => set({ ntpMeasurements: measurements }),
     setOffsetEstimate: (offset) => set({ offsetEstimate: offset }),
-    
-    // Sync quality monitoring
-    getSyncQuality: () => {
-      const state = get();
-      return state.syncQuality;
-    },
-    
-    updateSyncQuality: (quality) => {
-      set((state) => ({
-        ...state,
-        syncQuality: {
-          ...state.syncQuality,
-          ...quality,
-          lastUpdate: Date.now()
-        }
-      }));
-    },
-    
-    setRoundTripEstimate: (roundTrip) => set({ roundTripEstimate: roundTrip }),
+    setRoundTripEstimate: (rtt) => set({ roundTripEstimate: rtt }),
     setIsSynced: (synced) => set({ isSynced: synced }),
 
-    // Enhanced scheduled audio actions for synchronization
-    schedulePlay: ({ trackTimeSeconds, targetServerTime, audioId }) => {
-      const state = get();
-      if (state.isInitingSystem) {
-        return;
+    // Connection status setters
+    setConnectionStatus: (status) => set((state) => ({ 
+      connectionStatus: { ...state.connectionStatus, ...status } 
+    })),
+    updateConnectionMetrics: (metrics) => set((state) => ({
+      connectionStatus: { 
+        ...state.connectionStatus, 
+        ...metrics,
+        uptime: state.connectionStatus.connectionStartTime ? 
+          Date.now() - state.connectionStatus.connectionStartTime : 0
       }
+    })),
 
-      // Find the audio source
-      const audioSource = state.audioSources.find(source => source.id === audioId);
-      if (!audioSource) {
-        toast.error('Audio file not found - please reupload');
-        return;
-      }
-
-      // Update selected audio if different
-      if (audioId !== state.selectedAudioId) {
-        set({ selectedAudioId: audioId });
-      }
-
-      const syncEngine = getSyncEngine();
-      const audioController = getAudioController(state.audioPlayer?.audioContext);
+    // Sync quality setters
+    setSyncQuality: (quality) => set((state) => ({ 
+      syncQuality: { ...state.syncQuality, ...quality, lastUpdate: Date.now() } 
+    })),
+    updateSyncQuality: (metrics) => set((state) => {
+      const newQuality = { ...state.syncQuality, ...metrics, lastUpdate: Date.now() };
       
-      if (!audioController) {
-        console.error('Audio controller not available');
+      // Calculate quality level based on metrics
+      let qualityLevel = 'unknown';
+      if (newQuality.latency > 0) {
+        if (newQuality.latency < 50 && newQuality.jitter < 10 && newQuality.accuracy > 0.95) {
+          qualityLevel = 'excellent';
+        } else if (newQuality.latency < 100 && newQuality.jitter < 20 && newQuality.accuracy > 0.9) {
+          qualityLevel = 'good';
+        } else if (newQuality.latency < 200 && newQuality.jitter < 50 && newQuality.accuracy > 0.8) {
+          qualityLevel = 'fair';
+        } else {
+          qualityLevel = 'poor';
+        }
+      }
+      
+      return { syncQuality: { ...newQuality, qualityLevel } };
+    }),
+
+    // NTP synchronization functions
+    sendNTPRequest: () => {
+      const state = get();
+      if (state.ntpMeasurements.length >= MAX_NTP_MEASUREMENTS) {
+        const { averageOffset, averageRoundTrip } = calculateOffsetEstimate(state.ntpMeasurements);
+        set({
+          offsetEstimate: averageOffset,
+          roundTripEstimate: averageRoundTrip,
+          isSynced: true,
+        });
+
+        if (averageRoundTrip > 750) {
+          toast.error("Latency is very high (>750ms). Sync may be unstable.");
+        }
         return;
       }
 
-      // Check sync quality and warn if poor
-      const syncStatus = syncEngine.getSyncStatus();
-      if (syncStatus.quality === 'poor') {
-        console.warn('Poor sync quality detected:', syncStatus);
+      // Send NTP request if we have a connected socket
+      if (state.socket && state.socket.readyState === WebSocket.OPEN) {
+        const t0 = Date.now();
+        state.socket.send(JSON.stringify({
+          type: 'NTP_REQUEST',
+          t0
+        }));
       }
+    },
 
-      // Schedule with high precision
-      audioController.schedulePlay({
-        audioBuffer: audioSource.audioBuffer,
-        startTime: targetServerTime,
-        offset: trackTimeSeconds,
-        trackId: audioId,
-        fadeIn: true
-      }).then(result => {
-        console.log('Audio scheduled:', {
-          accuracy: result.accuracy,
-          bufferTime: result.bufferTime,
-          syncQuality: syncStatus.quality
+    resetNTPConfig: () => {
+      set({
+        ntpMeasurements: [],
+        offsetEstimate: 0,
+        roundTripEstimate: 0,
+        isSynced: false,
+      });
+    },
+
+    addNTPMeasurement: (measurement) => {
+      const state = get();
+      const newMeasurements = [...state.ntpMeasurements, measurement];
+      
+      // Keep only the most recent measurements
+      if (newMeasurements.length > MAX_NTP_MEASUREMENTS) {
+        newMeasurements.shift();
+      }
+      
+      set({ ntpMeasurements: newMeasurements });
+      
+      // Update estimates if we have enough measurements
+      if (newMeasurements.length >= 5) {
+        const { averageOffset, averageRoundTrip } = calculateOffsetEstimate(newMeasurements);
+        
+        // Calculate sync quality metrics
+        const recentMeasurements = newMeasurements.slice(-10); // Use last 10 measurements
+        const latencies = recentMeasurements.map(m => m.roundTripDelay);
+        const avgLatency = latencies.reduce((sum, l) => sum + l, 0) / latencies.length;
+        
+        // Calculate jitter (variance in latency)
+        const jitter = Math.sqrt(
+          latencies.reduce((sum, l) => sum + Math.pow(l - avgLatency, 2), 0) / latencies.length
+        );
+        
+        // Calculate accuracy based on consistency of measurements
+        const maxLatency = Math.max(...latencies);
+        const minLatency = Math.min(...latencies);
+        const accuracy = Math.max(0, 1 - (maxLatency - minLatency) / avgLatency);
+        
+        // Update both sync estimates and quality
+        set({
+          offsetEstimate: averageOffset,
+          roundTripEstimate: averageRoundTrip,
+          isSynced: newMeasurements.length >= 10,
         });
         
-        // Update state
-        set({
-          isPlaying: true,
-          currentTime: trackTimeSeconds,
-          playbackStartTime: result.scheduledTime,
-          playbackOffset: trackTimeSeconds,
-          duration: audioSource.audioBuffer.duration
+        // Update sync quality using the new function
+        const updateSyncQuality = get().updateSyncQuality;
+        updateSyncQuality({
+          latency: avgLatency,
+          jitter,
+          accuracy,
+          clockDrift: 0 // Could be calculated from offset changes over time
         });
-      }).catch(error => {
-        console.error('Failed to schedule audio:', error);
-        toast.error('Failed to start playback');
-      });
+      }
+    },
+
+    // Scheduled audio actions for WebSocket synchronization
+    schedulePlay: ({ trackTimeSeconds, targetServerTime, audioId }) => {
+      const state = get();
+      const { offsetEstimate } = state;
+      
+      // Calculate when to execute based on server time and our offset
+      const now = Date.now();
+      const serverNow = now + offsetEstimate;
+      const waitTime = Math.max(0, targetServerTime - serverNow);
+      
+      setTimeout(() => {
+        if (audioId && audioId !== state.selectedAudioId) {
+          state.setSelectedAudioId(audioId);
+        }
+        state.playAudio({ when: 0, offset: trackTimeSeconds || 0 });
+      }, waitTime);
     },
 
     schedulePause: ({ targetServerTime }) => {
       const state = get();
-      const audioController = getAudioController(state.audioPlayer?.audioContext);
+      const { offsetEstimate } = state;
       
-      if (!audioController || !state.selectedAudioId) {
-        return;
-      }
-
-      const result = audioController.schedulePause(state.selectedAudioId, targetServerTime);
+      // Calculate when to execute based on server time and our offset
+      const now = Date.now();
+      const serverNow = now + offsetEstimate;
+      const waitTime = Math.max(0, targetServerTime - serverNow);
       
-      if (result) {
-        set({
-          isPlaying: false,
-          currentTime: Math.max(0, result.currentPosition)
-        });
-        
-        console.log('Audio pause scheduled:', {
-          stopTime: result.stopTime,
-          position: result.currentPosition,
-          accuracy: result.accuracy
-        });
-      }
+      setTimeout(() => {
+        state.pauseAudio({ when: 0 });
+      }, waitTime);
     },
 
-    // Process spatial audio configuration from server
+    // Room management
+    setConnectedClients: (clients) => set({ connectedClients: clients }),
+
+    // Upload tracking
+    addToUploadHistory: (name, id) =>
+      set((state) => ({
+        uploadHistory: [
+          ...state.uploadHistory,
+          { name, timestamp: Date.now(), id },
+        ],
+      })),
+
+    markAudioAsDownloaded: (audioId) =>
+      set((state) => ({
+        downloadedAudioIds: new Set([...state.downloadedAudioIds, audioId]),
+      })),
+
+    hasDownloadedAudio: (audioId) => {
+      const state = get();
+      return state.downloadedAudioIds.has(audioId);
+    },
+
+    // Spatial audio support
     processSpatialConfig: (config) => {
       const state = get();
       set({ spatialConfig: config });
-      const { gains, listeningSource } = config;
-
-      // Update listening source position if not dragging
+      
       if (!state.isDraggingListeningSource) {
-        set({ listeningSourcePosition: listeningSource });
+        set({ listeningSourcePosition: config.listeningSource });
       }
 
-      // Apply gain changes if we have an audio player
-      if (state.audioPlayer) {
-        const { gainNode, audioContext } = state.audioPlayer;
+      // Apply spatial audio gains if we have an audio player
+      if (state.audioPlayer?.gainNode && config.gains) {
+        // Try to get userId from room store if available
+        let userId = null;
+        try {
+          // Dynamically access room store to avoid circular imports
+          const roomStore = window.__roomStore__;
+          userId = roomStore?.getState?.()?.userId;
+        } catch (e) {
+          // Fallback: try to find a matching client ID in connected clients
+          if (state.connectedClients.length > 0) {
+            userId = state.connectedClients[0]?.clientId;
+          }
+        }
         
-        // For now, apply a simple gain based on average of all clients
-        // In a real implementation, you'd use the specific client's gain
-        const gainValues = Object.values(gains);
-        if (gainValues.length > 0) {
-          const averageGain = gainValues.reduce((sum, g) => sum + g.gain, 0) / gainValues.length;
-          const rampTime = gainValues[0]?.rampTime || 0.25;
+        if (userId && config.gains[userId]) {
+          const { gain, rampTime } = config.gains[userId];
+          const { audioContext, gainNode } = state.audioPlayer;
           
           const now = audioContext.currentTime;
+          const currentGain = gainNode.gain.value;
+          
           gainNode.gain.cancelScheduledValues(now);
-          gainNode.gain.setValueAtTime(gainNode.gain.value, now);
-          gainNode.gain.linearRampToValueAtTime(averageGain, now + rampTime);
+          gainNode.gain.setValueAtTime(currentGain, now);
+          gainNode.gain.linearRampToValueAtTime(gain, now + (rampTime || 0.25));
         }
       }
     },
+
+    setListeningSourcePosition: (position) => set({ listeningSourcePosition: position }),
+    setIsDraggingListeningSource: (isDragging) => set({ isDraggingListeningSource: isDragging }),
+    setIsSpatialAudioEnabled: (isEnabled) => set({ isSpatialAudioEnabled: isEnabled }),
 
     processStopSpatialAudio: () => {
       const state = get();
-      if (state.audioPlayer) {
-        const { gainNode, audioContext } = state.audioPlayer;
-        const now = audioContext.currentTime;
-        gainNode.gain.cancelScheduledValues(now);
-        gainNode.gain.setValueAtTime(gainNode.gain.value, now);
-        gainNode.gain.linearRampToValueAtTime(1.0, now + 0.25);
+      if (state.audioPlayer?.gainNode) {
+        const { gainNode } = state.audioPlayer;
+        gainNode.gain.cancelScheduledValues(0);
+        gainNode.gain.value = 1;
       }
+      
       set({ 
         isSpatialAudioEnabled: false,
         spatialConfig: null 
-      });
-    },
-
-    // Enhanced playAudio method for WebSocket synchronization
-    playAudio: ({ offset, when, audioBuffer }) => {
-      const state = get();
-      const { audioPlayer } = state;
-      
-      if (!audioPlayer || !audioBuffer) {
-        return;
-      }
-
-      const { audioContext, gainNode } = audioPlayer;
-
-      // Stop any existing source
-      if (audioPlayer.sourceNode) {
-        try {
-          audioPlayer.sourceNode.stop();
-        } catch (e) {
-          // Ignore if already stopped
-        }
-      }
-
-      // Create new source node
-      const sourceNode = audioContext.createBufferSource();
-      sourceNode.buffer = audioBuffer;
-      sourceNode.connect(gainNode);
-      gainNode.connect(audioContext.destination);
-
-      // Schedule playback
-      const startTime = audioContext.currentTime + when;
-      sourceNode.start(startTime, offset);
-
-      // Handle track ending
-      sourceNode.onended = () => {
-        const currentState = get();
-        if (currentState.isPlaying && currentState.audioPlayer?.sourceNode === sourceNode) {
-          // Auto-skip to next track or stop
-          currentState.skipToNextTrack(true);
-        }
-      };
-
-      // Update state
-      set({
-        audioPlayer: {
-          ...audioPlayer,
-          sourceNode
-        },
-        isPlaying: true,
-        currentTime: offset,
-        playbackStartTime: startTime,
-        playbackOffset: offset,
-        duration: audioBuffer.duration
-      });
-    },
-
-    pauseAudio: ({ when }) => {
-      const state = get();
-      const { audioPlayer } = state;
-      
-      if (!audioPlayer?.sourceNode) {
-        return;
-      }
-
-      const { sourceNode, audioContext } = audioPlayer;
-      const stopTime = audioContext.currentTime + when;
-      
-      try {
-        sourceNode.stop(stopTime);
-      } catch (e) {
-        // Error stopping audio source - silently ignore
-      }
-
-      // Calculate current position
-      const elapsedSinceStart = stopTime - state.playbackStartTime;
-      const currentTrackPosition = state.playbackOffset + elapsedSinceStart;
-
-      set({
-        isPlaying: false,
-        currentTime: Math.max(0, currentTrackPosition)
       });
     },
 
@@ -932,24 +1094,91 @@ export const useGlobalStore = create((set, get) => {
     resetStore: () => {
       const state = get();
 
-      if (state.isPlaying && state.audioPlayer) {
+      // Stop any playing audio and clean up audio player
+      if (state.audioPlayer) {
         try {
-          state.audioPlayer.sourceNode.stop();
+          if (state.audioPlayer.sourceNode) {
+            state.audioPlayer.sourceNode.stop();
+            state.audioPlayer.sourceNode.disconnect();
+          }
+          if (state.audioPlayer.gainNode) {
+            state.audioPlayer.gainNode.disconnect();
+          }
+          if (state.audioPlayer.audioContext && state.audioPlayer.audioContext.state !== 'closed') {
+            state.audioPlayer.audioContext.close();
+          }
         } catch (e) {
-          // Ignore errors if already stopped
+          // Ignore cleanup errors
         }
       }
 
+      // Close WebSocket connection
       if (state.socket && state.socket.readyState === WebSocket.OPEN) {
         state.socket.close();
       }
 
-      if (state.audioPlayer?.audioContext) {
-        state.audioPlayer.audioContext.close().catch(() => {});
+      // Reset to initial state but keep room-specific settings
+      set({
+        ...initialState,
+        // Allow re-initialization for new room
+        isInitingSystem: false,
+      });
+    },
+
+    // Reset audio for room changes (lighter reset that preserves room state)
+    resetAudioForRoom: () => {
+      const state = get();
+
+      // Stop any playing audio
+      if (state.audioPlayer?.sourceNode) {
+        try {
+          state.audioPlayer.sourceNode.stop();
+          state.audioPlayer.sourceNode.disconnect();
+        } catch (e) {
+          // Ignore cleanup errors
+        }
       }
 
-      set(initialState);
-      initializeAudio();
+      // Reset audio-related state but keep room and sync state
+      set({
+        audioSources: [],
+        selectedAudioId: null,
+        isPlaying: false,
+        currentTime: 0,
+        duration: 0,
+        playbackStartTime: 0,
+        playbackOffset: 0,
+        audioPlayer: null,
+        downloadedAudioIds: new Set(),
+        uploadHistory: [],
+        isInitingSystem: false, // Allow re-initialization
+      });
+    },
+
+    // Cleanup function for component unmounting
+    cleanup: () => {
+      const state = get();
+      
+      // Stop any playing audio
+      if (state.isPlaying && state.audioPlayer?.sourceNode) {
+        try {
+          state.audioPlayer.sourceNode.stop();
+          state.audioPlayer.sourceNode.disconnect();
+        } catch (e) {
+          // Ignore cleanup errors
+        }
+      }
+      
+      // Close WebSocket
+      if (state.socket && state.socket.readyState === WebSocket.OPEN) {
+        state.socket.close();
+      }
+      
+      set({ 
+        isPlaying: false, 
+        socket: null,
+        audioPlayer: null 
+      });
     },
 
     // Volume control

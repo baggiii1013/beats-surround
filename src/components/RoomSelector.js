@@ -16,13 +16,14 @@ export default function RoomSelector() {
   
   const generateNewRoomId = useRoomStore((state) => state.generateNewRoomId);
   const setRoomId = useRoomStore((state) => state.setRoomId);
-  const resetStore = useGlobalStore((state) => state.resetStore);
+  const resetAudioForRoom = useGlobalStore((state) => state.resetAudioForRoom);
 
   const handleCreateRoom = async () => {
     setIsCreating(true);
     
     try {
-      resetStore();
+      // Reset audio state for new room
+      resetAudioForRoom();
       
       // Try to create room on server
       const response = await fetch(`${API_URL}/api/rooms`, {
@@ -66,7 +67,7 @@ export default function RoomSelector() {
       
       if (response.ok) {
         // Room exists, join it
-        resetStore();
+        resetAudioForRoom();
         setRoomId(roomIdInput.trim().toUpperCase());
         toast.success(`Joined room ${roomIdInput.trim().toUpperCase()}`);
       } else if (response.status === 404) {

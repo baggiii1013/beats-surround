@@ -8,8 +8,15 @@ import { parseBuffer } from 'music-metadata';
  */
 export async function extractAudioMetadata(arrayBuffer, url) {
   try {
+    // Determine the file format from the URL
+    const fileExtension = url.split('.').pop().toLowerCase();
+    const mimeType = fileExtension === 'flac' ? 'audio/flac' : 
+                    fileExtension === 'mp3' ? 'audio/mpeg' :
+                    fileExtension === 'wav' ? 'audio/wav' :
+                    fileExtension === 'm4a' ? 'audio/mp4' : 'audio/flac';
+    
     // Parse metadata from the audio buffer
-    const metadata = await parseBuffer(new Uint8Array(arrayBuffer), 'audio/flac');
+    const metadata = await parseBuffer(new Uint8Array(arrayBuffer), mimeType);
     
     const { common, format } = metadata;
     
