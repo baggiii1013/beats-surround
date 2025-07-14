@@ -975,7 +975,18 @@ export const useGlobalStore = create((set, get) => {
         if (audioId && audioId !== state.selectedAudioId) {
           state.setSelectedAudioId(audioId);
         }
-        state.playAudio({ when: 0, offset: trackTimeSeconds || 0 });
+        
+        // Find the correct audio index for the selected audio ID
+        const currentState = get();
+        const audioIndex = currentState.findAudioIndexById(audioId || currentState.selectedAudioId);
+        
+        if (audioIndex !== null) {
+          currentState.playAudio({ 
+            when: 0, 
+            offset: trackTimeSeconds || 0,
+            audioIndex
+          });
+        }
       }, waitTime);
     },
 
