@@ -1,10 +1,11 @@
-import { Badge } from '@/components/ui/badge';
-import { useGlobalStore } from '@/store/global';
 import React from 'react';
+import { useGlobalStore } from '../store/global';
+import { Badge } from './ui/badge';
 
-const SyncQualityIndicator = ({ className = '' }) => {
+const SyncQualityIndicator = ({ className = '', showDetails = true }) => {
   const syncQuality = useGlobalStore((state) => state.syncQuality);
   const isSynced = useGlobalStore((state) => state.isSynced);
+  const connectionStatus = useGlobalStore((state) => state.connectionStatus);
 
   // Safety check - provide default values if syncQuality is incomplete
   const safeQuality = {
@@ -40,12 +41,36 @@ const SyncQualityIndicator = ({ className = '' }) => {
     return `${absDrift.toFixed(2)}s/s`;
   };
 
-  if (!isSynced) {
+  if (!connectionStatus.isConnected) {
     return (
       <div className={`flex items-center gap-2 ${className}`}>
         <Badge variant="secondary" className="bg-gray-500 text-white">
-          Not Synced
+          Offline
         </Badge>
+      </div>
+    );
+  }
+
+  if (!isSynced) {
+    return (
+      <div className={`flex items-center gap-2 ${className}`}>
+        <Badge variant="secondary" className="bg-yellow-500 text-black">
+          Syncing...
+        </Badge>
+      </div>
+    );
+  }
+
+  if (!showDetails) {
+    // Compact version for mobile/small spaces
+    return (
+      <div className={`flex items-center gap-1 ${className}`}>
+        <Badge className={getQualityColor(safeQuality.qualityLevel)}>
+          {safeQuality.qualityLevel.charAt(0).toUpperCase() + safeQuality.qualityLevel.slice(1)}
+        </Badge>
+        <span className="text-xs text-gray-400">
+          {formatLatency(safeQuality.latency)}
+        </span>
       </div>
     );
   }

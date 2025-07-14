@@ -10,6 +10,7 @@ import Player from './Player';
 import Queue from './Queue';
 import RoomInfo from './RoomInfo';
 import RoomJoiner from './RoomJoiner';
+import SyncQualityIndicator from './SyncQualityIndicator';
 import { Badge } from './ui/badge';
 import UserGrid from './UserGrid';
 
@@ -47,7 +48,7 @@ function MobileRoomInfoCard() {
       </div>
 
       {/* Quick Stats */}
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-3 gap-3">
         <div className="bg-neutral-800/50 rounded-xl p-3 text-center">
           <p className="text-2xl font-bold text-white">{audioSources.length}</p>
           <p className="text-xs text-gray-400 uppercase tracking-wide">Tracks</p>
@@ -55,6 +56,10 @@ function MobileRoomInfoCard() {
         <div className="bg-neutral-800/50 rounded-xl p-3 text-center">
           <ConnectionStatusIndicator showDetails={false} className="justify-center" />
           <p className="text-xs text-gray-400 uppercase tracking-wide mt-1">Connection</p>
+        </div>
+        <div className="bg-neutral-800/50 rounded-xl p-3 text-center">
+          <SyncQualityIndicator showDetails={false} className="justify-center" />
+          <p className="text-xs text-gray-400 uppercase tracking-wide mt-1">Sync</p>
         </div>
       </div>
 

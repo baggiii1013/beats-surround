@@ -90,14 +90,18 @@ export default function WebSocketManager() {
           lastReconnectTime: connectionStatus.reconnectCount > 0 ? Date.now() : 0
         });
         
-        // Reset sync quality to unknown when connecting
-        setSyncQuality({
-          latency: 0,
-          jitter: 0,
-          accuracy: 0,
-          clockDrift: 0,
-          qualityLevel: 'unknown'
-        });
+        // Only reset sync quality if this is a fresh connection (not a reconnection)
+        // or if we don't have any existing sync data
+        const currentSyncQuality = useGlobalStore.getState().syncQuality;
+        if (connectionStatus.reconnectCount === 0 || currentSyncQuality.qualityLevel === 'unknown') {
+          setSyncQuality({
+            latency: 0,
+            jitter: 0,
+            accuracy: 0,
+            clockDrift: 0,
+            qualityLevel: 'unknown'
+          });
+        }
         
         // Clear any reconnection timeout
         if (reconnectTimeoutRef.current) {
@@ -133,6 +137,15 @@ export default function WebSocketManager() {
       ws.onclose = (event) => {
         setSocket(null);
         setIsSynced(false);
+        
+        // Reset sync quality when disconnected
+        setSyncQuality({
+          latency: 0,
+          jitter: 0,
+          accuracy: 0,
+          clockDrift: 0,
+          qualityLevel: 'unknown'
+        });
         
         // Update connection status
         setConnectionStatus({
@@ -329,13 +342,28 @@ export default function WebSocketManager() {
     
     // Show sync quality feedback when first synced
     if (ntpMeasurements.length + 1 === 10) { // First time reaching sync threshold
-      const rtt = measurement.roundTripDelay;
-      if (rtt < 100) {
-        toast.success(`Synchronized (±${Math.round(rtt)}ms) - Excellent`);
-      } else if (rtt < 250) {
-        toast.success(`Synchronized (±${Math.round(rtt)}ms) - Good`);
+      const currentSyncQuality = useGlobalStore.getState().syncQuality;
+      const qualityLevel = currentSyncQuality.qualityLevel;
+      const latency = Math.round(currentSyncQuality.latency || measurement.roundTripDelay);
+      
+      if (qualityLevel === 'excellent') {
+        toast.success(`Synchronized (±${latency}ms) - Excellent`);
+      } else if (qualityLevel === 'good') {
+        toast.success(`Synchronized (±${latency}ms) - Good`);
+      } else if (qualityLevel === 'fair') {
+        toast.success(`Synchronized (±${latency}ms) - Fair`);
+      } else if (qualityLevel === 'poor') {
+        toast.warning(`Synchronized (±${latency}ms) - Poor quality`);
       } else {
-        toast.warning(`Synchronized (±${Math.round(rtt)}ms) - High latency`);
+        // Fallback to RTT-based message if quality not yet calculated
+        const rtt = measurement.roundTripDelay;
+        if (rtt < 100) {
+          toast.success(`Synchronized (±${Math.round(rtt)}ms) - Excellent`);
+        } else if (rtt < 250) {
+          toast.success(`Synchronized (±${Math.round(rtt)}ms) - Good`);
+        } else {
+          toast.warning(`Synchronized (±${Math.round(rtt)}ms) - High latency`);
+        }
       }
     }
   };

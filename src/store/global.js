@@ -860,14 +860,14 @@ export const useGlobalStore = create((set, get) => {
     updateSyncQuality: (metrics) => set((state) => {
       const newQuality = { ...state.syncQuality, ...metrics, lastUpdate: Date.now() };
       
-      // Calculate quality level based on metrics
+      // Calculate quality level based on metrics with more reasonable thresholds
       let qualityLevel = 'unknown';
       if (newQuality.latency > 0) {
-        if (newQuality.latency < 50 && newQuality.jitter < 10 && newQuality.accuracy > 0.95) {
+        if (newQuality.latency < 100 && newQuality.jitter < 20 && newQuality.accuracy > 0.85) {
           qualityLevel = 'excellent';
-        } else if (newQuality.latency < 100 && newQuality.jitter < 20 && newQuality.accuracy > 0.9) {
+        } else if (newQuality.latency < 200 && newQuality.jitter < 40 && newQuality.accuracy > 0.75) {
           qualityLevel = 'good';
-        } else if (newQuality.latency < 200 && newQuality.jitter < 50 && newQuality.accuracy > 0.8) {
+        } else if (newQuality.latency < 350 && newQuality.jitter < 80 && newQuality.accuracy > 0.6) {
           qualityLevel = 'fair';
         } else {
           qualityLevel = 'poor';
@@ -941,7 +941,20 @@ export const useGlobalStore = create((set, get) => {
         // Calculate accuracy based on consistency of measurements
         const maxLatency = Math.max(...latencies);
         const minLatency = Math.min(...latencies);
-        const accuracy = Math.max(0, 1 - (maxLatency - minLatency) / avgLatency);
+        const latencyVariance = maxLatency - minLatency;
+        
+        // Improved accuracy calculation that doesn't penalize low latency too much
+        // Use a more reasonable baseline for accuracy calculation
+        const baselineLatency = Math.max(avgLatency, 50); // Use at least 50ms as baseline
+        const accuracy = Math.max(0, Math.min(1, 1 - (latencyVariance / baselineLatency)));
+        
+        // If latency variance is very low, boost accuracy
+        if (latencyVariance < 10) {
+          const boostedAccuracy = Math.min(1, accuracy + 0.2);
+          var finalAccuracy = boostedAccuracy;
+        } else {
+          var finalAccuracy = accuracy;
+        }
         
         // Update both sync estimates and quality
         set({
@@ -955,7 +968,7 @@ export const useGlobalStore = create((set, get) => {
         updateSyncQuality({
           latency: avgLatency,
           jitter,
-          accuracy,
+          accuracy: finalAccuracy,
           clockDrift: 0 // Could be calculated from offset changes over time
         });
       }
