@@ -3,6 +3,8 @@
 import { useEffect, useState } from 'react';
 import AudioUploader from './AudioUploader';
 import BottomNavigation from './BottomNavigation';
+import MobileNavigation from './MobileNavigation';
+import { MobilePlayerView, MobileQueueView, MobileRoomView, TabletPlayerView, TabletQueueView, TabletRoomView } from './MobileViews';
 import Player from './Player';
 import Queue from './Queue';
 import RoomInfo from './RoomInfo';
@@ -12,14 +14,18 @@ import UserGrid from './UserGrid';
 
 export default function ResponsiveLayout() {
   const [isMobile, setIsMobile] = useState(false);
+  const [isTablet, setIsTablet] = useState(false);
+  const [activeView, setActiveView] = useState('player');
 
   useEffect(() => {
-    const checkMobile = () => {
-      setIsMobile(window.innerWidth < 1024); // lg breakpoint
+    const checkScreenSize = () => {
+      const width = window.innerWidth;
+      setIsMobile(width < 768); // md breakpoint
+      setIsTablet(width >= 768 && width < 1024); // between md and lg
     };
 
-    checkMobile();
-    window.addEventListener('resize', checkMobile);
+    checkScreenSize();
+    window.addEventListener('resize', checkScreenSize);
     
     // Add viewport meta tag for mobile devices
     if (typeof window !== 'undefined') {
@@ -32,25 +38,41 @@ export default function ResponsiveLayout() {
       viewport.content = 'width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no';
     }
     
-    return () => window.removeEventListener('resize', checkMobile);
+    return () => window.removeEventListener('resize', checkScreenSize);
   }, []);
 
-  if (isMobile) {
-    // Mobile Layout
+  const handleViewChange = (view) => {
+    setActiveView(view);
+  };
+
+  const renderMobileView = () => {
+    const ViewComponent = isTablet ? 
+      { player: TabletPlayerView, room: TabletRoomView, queue: TabletQueueView } :
+      { player: MobilePlayerView, room: MobileRoomView, queue: MobileQueueView };
+    
+    const Component = ViewComponent[activeView] || ViewComponent.player;
+    return <Component key={`${isTablet ? 'tablet' : 'mobile'}-${activeView}`} />;
+  };
+
+  if (isMobile || isTablet) {
+    // Mobile and Tablet Layout with Dock Navigation
     return (
-      <>
+      <div className="h-screen flex flex-col bg-gradient-to-br from-black via-gray-900 to-black">
         {/* Top Navigation */}
         <TopBar />
         
-        {/* Main Content - Player with Room Info */}
-        <div className="h-[calc(100vh-8rem)] overflow-y-auto pb-4 px-4">
-          <RoomInfo className="mb-4 mt-4" />
-          <Player />
+        {/* Main Content Area */}
+        <div className="flex-1 relative overflow-hidden">
+          {renderMobileView()}
         </div>
         
-        {/* Bottom Navigation */}
-        <BottomNavigation />
-      </>
+        {/* Dock Navigation */}
+        <MobileNavigation 
+          activeView={activeView} 
+          onViewChange={handleViewChange}
+          isTablet={isTablet}
+        />
+      </div>
     );
   }
 
