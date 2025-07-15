@@ -3,11 +3,42 @@ const WebSocket = require('ws');
 const http = require('http');
 const cors = require('cors');
 const { v4: uuidv4 } = require('uuid');
-const dotenv = require('dotenv')
+
+// Load environment variables first, before importing other modules
+const dotenv = require('dotenv');
+const result = dotenv.config();
+
+if (result.error) {
+  console.error('Error loading .env file:', result.error);
+  process.exit(1);
+}
+
+console.log('Environment variables loaded successfully');
+console.log('PORT:', process.env.PORT);
+console.log('NODE_ENV:', process.env.NODE_ENV);
+
+// Validate critical environment variables
+const requiredEnvVars = ['PORT'];
+const missingEnvVars = requiredEnvVars.filter(varName => !process.env[varName]);
+
+if (missingEnvVars.length > 0) {
+  console.error(`Missing required environment variables: ${missingEnvVars.join(', ')}`);
+  process.exit(1);
+}
+
+console.log('Starting server initialization...');
+
+const { handleGetPresignedURL, handleUploadComplete, handleGetAudio } = require('./routes/upload');
+const { handleGetDefaultAudio, handleGetRoomAudio } = require('./routes/default-audio');
+const RoomCleanupManager = require('./lib/room-cleanup');
+
+// Initialize the room cleanup manager
+const cleanupManager = new RoomCleanupManager();
+
 const app = express();
 const server = http.createServer(app);
 
-dotenv.config();
+console.log('Express app and HTTP server created...');
 
 // Optimize HTTP server for low latency
 server.keepAliveTimeout = 5000;
@@ -118,10 +149,52 @@ class Room {
     this.intervalId = null;
     this.createdAt = Date.now();
     this.audioSources = new Map(); // Store room's audio sources
+    this.audioSourcesLoaded = false; // Track if we've loaded existing audio sources
+    this.cleanupTimeout = null; // Timeout for cleaning up empty rooms
   }
 
-  addClient(clientId, client) {
+  async loadExistingRoomAudio() {
+    try {
+      const { handleGetRoomAudio } = require('./routes/default-audio');
+      
+      // Create a mock request/response to get room audio files
+      const mockReq = { params: { roomId: this.id } };
+      let audioFiles = [];
+      
+      const mockRes = {
+        json: (data) => { audioFiles = data; },
+        status: () => ({ json: () => {} })
+      };
+      
+      await handleGetRoomAudio(mockReq, mockRes);
+      
+      // Add existing R2 files to room's audio sources
+      audioFiles.forEach(file => {
+        this.audioSources.set(file.id, {
+          url: file.url,
+          name: file.name,
+          id: file.id,
+          uploadedAt: file.lastModified,
+          type: 'r2-upload',
+          size: file.size
+        });
+      });
+    } catch (error) {
+      // Silently handle errors - room can still function without existing files
+    }
+  }
+
+  async addClient(clientId, client) {
     this.clients.set(clientId, client);
+    
+    // Cancel any pending cleanup since we have a client
+    cleanupManager.cancelRoomCleanup(this.id);
+    
+    // Load existing room audio sources when first client joins
+    if (!this.audioSourcesLoaded) {
+      await this.loadExistingRoomAudio();
+      this.audioSourcesLoaded = true;
+    }
     
     // Send current room state to new client
     this.sendRoomStateToClient(client);
@@ -139,11 +212,14 @@ class Room {
   removeClient(clientId) {
     this.clients.delete(clientId);
     
-    // Clean up room if empty
+    // Clean up room if empty, but with a delay to allow reconnections
     if (this.clients.size === 0) {
-      this.cleanup();
-      rooms.delete(this.id);
+      // Use the enhanced cleanup manager instead of basic timeout
+      cleanupManager.scheduleRoomCleanup(this.id, rooms);
     } else {
+      // Cancel any pending cleanup since we still have clients
+      cleanupManager.cancelRoomCleanup(this.id);
+      
       // Reposition remaining clients
       this.positionClientsInCircle();
       
@@ -190,20 +266,37 @@ class Room {
     
     // Send existing audio sources
     this.audioSources.forEach((source, id) => {
-      client.ws.send(JSON.stringify({
-        type: 'NEW_AUDIO_SOURCE',
-        audioId: id,
-        audioName: source.name,
-        audioBuffer: source.audioBuffer
-      }));
+      // Check if this is an R2 upload or direct WebSocket upload
+      if (source.type === 'r2-upload') {
+        // Send R2 source message
+        client.ws.send(JSON.stringify({
+          type: 'NEW_AUDIO_SOURCE_R2',
+          audioSource: source
+        }));
+      } else {
+        // Send direct audio buffer message (legacy)
+        client.ws.send(JSON.stringify({
+          type: 'NEW_AUDIO_SOURCE',
+          audioId: id,
+          audioName: source.name,
+          audioBuffer: source.audioBuffer
+        }));
+      }
     });
   }
 
   cleanup() {
+    // Clear any existing intervals and timers
     if (this.intervalId) {
       clearInterval(this.intervalId);
       this.intervalId = null;
     }
+    
+    // Cancel any pending cleanup (handled by cleanup manager now)
+    cleanupManager.cancelRoomCleanup(this.id);
+    
+    // Note: R2 file cleanup is now handled by the RoomCleanupManager
+    // when the room is actually deleted, not just when cleanup() is called
   }
 
   broadcast(message, excludeClientId = null) {
@@ -467,7 +560,7 @@ const updateSpatialAudio = (room, loopCount) => {
 };
 
 // WebSocket connection handling with ultra-low latency optimizations
-wss.on('connection', (ws, req) => {
+wss.on('connection', async (ws, req) => {
   // Optimize WebSocket for low latency
   ws._socket.setNoDelay(true); // Disable Nagle's algorithm
   ws._socket.setKeepAlive(true, 30000); // Keep connection alive
@@ -496,7 +589,7 @@ wss.on('connection', (ws, req) => {
   };
   
   // Add client to room and global clients map
-  room.addClient(clientId, clientData);
+  await room.addClient(clientId, clientData);
   clients.set(ws, clientData);
   
   // Send client their ID and room info immediately
@@ -596,6 +689,30 @@ app.get('/api/rooms', (req, res) => {
   res.json(roomList);
 });
 
+// R2 Upload Routes
+app.post('/api/upload-url', handleGetPresignedURL);
+app.post('/api/upload-complete', handleUploadComplete(rooms, wss));
+app.post('/api/audio', handleGetAudio);
+
+// R2 Audio File Routes
+app.get('/api/default-audio', handleGetDefaultAudio);
+app.get('/api/room-audio/:roomId', handleGetRoomAudio);
+
+// Cleanup API Routes
+const { handleCleanupStatus, handleOrphanCleanup, handleRoomCleanup, handleOrphanScan } = require('./routes/cleanup');
+
+// Middleware to inject dependencies for cleanup routes
+app.use('/api/cleanup', (req, res, next) => {
+  req.cleanupManager = cleanupManager;
+  req.rooms = rooms;
+  next();
+});
+
+app.get('/api/cleanup/status', handleCleanupStatus);
+app.post('/api/cleanup/orphans', handleOrphanCleanup);
+app.post('/api/cleanup/room/:roomId', handleRoomCleanup);
+app.get('/api/cleanup/orphans/scan', handleOrphanScan);
+
 // Health check
 app.get('/health', (req, res) => {
   res.json({ 
@@ -610,6 +727,8 @@ const PORT = process.env.PORT || 8080;
 
 // Configure server for ultra-low latency
 server.listen(PORT, () => {
+  console.log(`🚀 WebSocket server started on port ${PORT}`);
+  
   // Optimize Node.js for low latency
   if (process.env.NODE_ENV === 'production') {
     // Production optimizations
@@ -627,24 +746,55 @@ server.listen(PORT, () => {
   if (HIGH_FREQUENCY_MODE) {
     setInterval(() => messageQueue.flush(), 1); // Flush every 1ms
   }
+  
+  // Start periodic orphan cleanup
+  const startOrphanCleanup = async () => {
+    try {
+      const activeRoomIds = new Set(rooms.keys());
+      await cleanupManager.cleanupOrphanedRooms(activeRoomIds, true); // true = perform deletion
+    } catch (error) {
+      console.error('❌ Scheduled orphan cleanup failed:', error);
+    }
+  };
+  
+  // Run orphan cleanup every hour (or configured interval)
+  const orphanCleanupInterval = setInterval(startOrphanCleanup, 60 * 60 * 1000); // 1 hour
+  
+  // Also run initial check after 5 minutes to clean up any orphans from previous sessions
+  setTimeout(startOrphanCleanup, 5 * 60 * 1000); // 5 minutes
 });
 
-// Graceful shutdown with immediate cleanup
-process.on('SIGTERM', () => {
-  rooms.forEach(room => room.cleanup());
-  wss.close(() => {
+// Enhanced graceful shutdown with cleanup manager
+const gracefulShutdown = async (signal) => {
+  console.log(`\n🛑 Received ${signal}. Starting graceful shutdown...`);
+  
+  try {
+    // Stop accepting new connections
+    wss.close();
+    
+    // Emergency cleanup of all rooms
+    await cleanupManager.emergencyCleanupAll(rooms);
+    
+    // Stop the cleanup manager
+    cleanupManager.stopOrphanCleanupScheduler();
+    
+    // Close the server
     server.close(() => {
+      console.log('✅ Server shutdown complete');
       process.exit(0);
     });
-  });
-});
+    
+    // Force exit after 30 seconds
+    setTimeout(() => {
+      console.log('⚠️  Forced shutdown after timeout');
+      process.exit(1);
+    }, 30000);
+    
+  } catch (error) {
+    console.error('❌ Error during shutdown:', error);
+    process.exit(1);
+  }
+};
 
-// Additional low-latency optimizations
-process.on('SIGINT', () => {
-  rooms.forEach(room => room.cleanup());
-  wss.close(() => {
-    server.close(() => {
-      process.exit(0);
-    });
-  });
-});
+process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+process.on('SIGINT', () => gracefulShutdown('SIGINT'));
