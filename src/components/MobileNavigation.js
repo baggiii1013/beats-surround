@@ -22,6 +22,14 @@ export default function MobileNavigation({ activeView, onViewChange, isTablet = 
 
   const dockItems = [
     {
+      icon: <List size={isTablet ? 28 : 24} strokeWidth={2.5} />,
+      label: 'Queue',
+      onClick: () => handleViewChange('queue'),
+      className: activeView === 'queue' 
+        ? 'ring-2 ring-blue-500 bg-gradient-to-br from-blue-900/40 to-blue-600/20 shadow-lg shadow-blue-500/25' 
+        : 'hover:bg-neutral-800/50 transition-colors'
+    },
+    {
       icon: <Music size={isTablet ? 28 : 24} strokeWidth={2.5} />,
       label: 'Player',
       onClick: () => handleViewChange('player'),
@@ -37,14 +45,6 @@ export default function MobileNavigation({ activeView, onViewChange, isTablet = 
         ? 'ring-2 ring-blue-500 bg-gradient-to-br from-blue-900/40 to-blue-600/20 shadow-lg shadow-blue-500/25' 
         : 'hover:bg-neutral-800/50 transition-colors'
     },
-    {
-      icon: <List size={isTablet ? 28 : 24} strokeWidth={2.5} />,
-      label: 'Queue',
-      onClick: () => handleViewChange('queue'),
-      className: activeView === 'queue' 
-        ? 'ring-2 ring-blue-500 bg-gradient-to-br from-blue-900/40 to-blue-600/20 shadow-lg shadow-blue-500/25' 
-        : 'hover:bg-neutral-800/50 transition-colors'
-    }
   ];
 
   if (!mounted) return null;
