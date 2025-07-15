@@ -9,8 +9,8 @@ const dotenv = require('dotenv');
 const result = dotenv.config();
 
 if (result.error) {
-  console.error('Error loading .env file:', result.error);
-  process.exit(1);
+  console.warn('No .env file found or error loading it:', result.error.message);
+  console.log('Using environment variables from the system/deployment platform');
 }
 
 // Validate critical environment variables
