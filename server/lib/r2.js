@@ -18,21 +18,6 @@ const S3_CONFIG = {
   SECRET_ACCESS_KEY: process.env.S3_SECRET_ACCESS_KEY,
 };
 
-// Validate required environment variables
-// const requiredEnvVars = ['S3_BUCKET_NAME', 'S3_PUBLIC_URL', 'S3_ENDPOINT', 'S3_ACCESS_KEY_ID', 'S3_SECRET_ACCESS_KEY'];
-// const missingEnvVars = requiredEnvVars.filter(varName => !process.env[varName]);
-
-// if (missingEnvVars.length > 0) {
-//   console.warn(`Missing R2 environment variables: ${missingEnvVars.join(', ')}`);
-//   console.warn('R2 functionality will be limited');
-// } else {
-//   console.log('R2 configuration loaded successfully');
-//   console.log('R2 Bucket:', S3_CONFIG.BUCKET_NAME);
-//   console.log('R2 Endpoint:', S3_CONFIG.ENDPOINT);
-// }
-
-
-
 // Initialize R2 client
 const r2Client = new S3Client({
   region: 'auto',

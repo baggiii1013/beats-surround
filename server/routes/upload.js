@@ -81,7 +81,7 @@ const handleUploadComplete = (rooms, wss) => async (req, res) => {
       return res.status(405).json({ error: 'Method not allowed' });
     }
 
-    const { roomId, originalName, publicUrl } = req.body;
+    const { roomId, originalName, publicUrl, metadata } = req.body;
 
     // Validate required fields
     if (!roomId || !originalName || !publicUrl) {
@@ -106,13 +106,24 @@ const handleUploadComplete = (rooms, wss) => async (req, res) => {
       });
     }
 
-    // Add audio source to room
+    // Add audio source to room with metadata
     const audioSource = {
       url: publicUrl,
-      name: originalName.replace(/\.[^/.]+$/, ''), // Remove extension
+      name: metadata?.title || originalName.replace(/\.[^/.]+$/, ''), // Use metadata title or fallback to filename
       id: publicUrl, // Use URL as ID for R2 files
       uploadedAt: new Date().toISOString(),
-      type: 'r2-upload'
+      type: 'r2-upload',
+      // Include metadata if available
+      ...(metadata && {
+        artist: metadata.artist,
+        album: metadata.album,
+        albumArtist: metadata.albumArtist,
+        year: metadata.year,
+        genre: metadata.genre,
+        duration: metadata.duration,
+        coverArt: metadata.coverArt,
+        metadata: metadata
+      })
     };
 
     // Store in room's audio sources

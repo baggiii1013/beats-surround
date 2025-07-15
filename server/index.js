@@ -13,10 +13,6 @@ if (result.error) {
   process.exit(1);
 }
 
-console.log('Environment variables loaded successfully');
-console.log('PORT:', process.env.PORT);
-console.log('NODE_ENV:', process.env.NODE_ENV);
-
 // Validate critical environment variables
 const requiredEnvVars = ['PORT'];
 const missingEnvVars = requiredEnvVars.filter(varName => !process.env[varName]);
@@ -25,8 +21,6 @@ if (missingEnvVars.length > 0) {
   console.error(`Missing required environment variables: ${missingEnvVars.join(', ')}`);
   process.exit(1);
 }
-
-console.log('Starting server initialization...');
 
 const { handleGetPresignedURL, handleUploadComplete, handleGetAudio } = require('./routes/upload');
 const { handleGetDefaultAudio, handleGetRoomAudio } = require('./routes/default-audio');
@@ -37,8 +31,6 @@ const cleanupManager = new RoomCleanupManager();
 
 const app = express();
 const server = http.createServer(app);
-
-console.log('Express app and HTTP server created...');
 
 // Optimize HTTP server for low latency
 server.keepAliveTimeout = 5000;
