@@ -3,6 +3,8 @@
 import { CloudUpload, Plus } from 'lucide-react';
 import { useState } from 'react';
 import { toast } from 'sonner';
+import { createPlaceholderCoverArt, extractAudioMetadata } from '../lib/audioMetadata';
+import { uploadAudioFileR2 } from '../lib/r2-api';
 import { cn, trimFileName } from '../lib/utils';
 import { useGlobalStore } from '../store/global';
 import { useRoomStore } from '../store/room';
@@ -11,6 +13,7 @@ import { Button } from './ui/button';
 export default function AudioUploader({ className, ...rest }) {
   const [isDragging, setIsDragging] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(0);
   const [fileName, setFileName] = useState(null);
   const addAudioSource = useGlobalStore((state) => state.addAudioSource);
   const socket = useGlobalStore((state) => state.socket);
@@ -22,40 +25,53 @@ export default function AudioUploader({ className, ...rest }) {
       return;
     }
 
+    if (!roomId) {
+      toast.error('Please join a room first');
+      return;
+    }
+
     setFileName(file.name);
     setIsUploading(true);
+    setUploadProgress(0);
 
     try {
-      // Convert file to ArrayBuffer
+      setUploadProgress(5);
+      toast.info('Extracting metadata...');
+      
+      // Extract metadata from the file before uploading
       const arrayBuffer = await file.arrayBuffer();
+      setUploadProgress(15);
       
-      // Create audio source object
-      const audioSource = {
-        name: file.name.replace(/\.[^/.]+$/, ''), // Remove file extension
-        audioBuffer: arrayBuffer,
-        id: `upload-${Date.now()}-${Math.random().toString(36).substring(2)}`,
-      };
+      // Extract metadata (including cover art)
+      const metadata = await extractAudioMetadata(arrayBuffer, file.name);
+      setUploadProgress(25);
+      
+      toast.success(`Found: ${metadata.title} by ${metadata.artist}`);
+      
+      // Upload using R2 (3-step process)
+      const result = await uploadAudioFileR2({
+        file,
+        roomId,
+        metadata, // Pass metadata to the upload function
+      });
 
-      // Add to global store
-      await addAudioSource(audioSource);
+      setUploadProgress(90);
+
+      // The server will broadcast the new audio source to all clients
+      // including this one, so we don't need to add it manually here
       
-      // Share with other clients in the room if connected
-      if (socket && socket.readyState === WebSocket.OPEN && roomId) {
-        const audioBufferArray = Array.from(new Uint8Array(arrayBuffer));
-        
-        socket.send(JSON.stringify({
-          type: 'UPLOAD_AUDIO',
-          audioId: audioSource.id,
-          audioName: audioSource.name,
-          audioBuffer: audioBufferArray
-        }));
-      }
-      
+      setUploadProgress(100);
       toast.success(`Successfully uploaded: ${file.name}`);
-      setTimeout(() => setFileName(null), 3000);
+      
+      setTimeout(() => {
+        setFileName(null);
+        setUploadProgress(0);
+      }, 3000);
+      
     } catch (error) {
-      toast.error('Failed to upload audio file');
+      toast.error(error.message || 'Failed to upload audio file');
       setFileName(null);
+      setUploadProgress(0);
     } finally {
       setIsUploading(false);
     }
@@ -98,8 +114,9 @@ export default function AudioUploader({ className, ...rest }) {
   return (
     <div
       className={cn(
-        "border-2 border-dashed border-gray-600 rounded-lg p-6 text-center transition-colors",
+        "border-2 border-dashed border-gray-600 rounded-lg p-6 text-center transition-colors relative overflow-hidden",
         isDragging ? "border-blue-400 bg-blue-400/10" : "hover:border-gray-500",
+        isUploading && "pointer-events-none",
         className
       )}
       onDragOver={handleDragOver}
@@ -107,6 +124,14 @@ export default function AudioUploader({ className, ...rest }) {
       onDrop={handleDrop}
       {...rest}
     >
+      {/* Progress bar */}
+      {isUploading && (
+        <div 
+          className="absolute top-0 left-0 h-1 bg-blue-500 transition-all duration-300 ease-out"
+          style={{ width: `${uploadProgress}%` }} 
+        />
+      )}
+      
       <input
         type="file"
         accept="audio/*"
@@ -128,11 +153,16 @@ export default function AudioUploader({ className, ...rest }) {
           
           <div>
             <p className="text-lg font-medium text-white mb-1">
-              {isUploading ? 'Uploading...' : 'Upload Audio File'}
+              {isUploading ? `Uploading... ${uploadProgress}%` : 'Upload Audio File'}
             </p>
             <p className="text-sm text-gray-400">
               {fileName ? trimFileName(fileName, 30) : 'Drag and drop or click to select'}
             </p>
+            {!isUploading && (
+              <p className="text-xs text-gray-500 mt-1">
+                Supports all audio formats • Upload to cloud storage
+              </p>
+            )}
           </div>
           
           <Button
@@ -142,7 +172,7 @@ export default function AudioUploader({ className, ...rest }) {
             disabled={isUploading}
             className="pointer-events-none"
           >
-            {isUploading ? 'Processing...' : 'Choose File'}
+            {isUploading ? `Processing... ${uploadProgress}%` : 'Choose File'}
           </Button>
         </div>
       </label>

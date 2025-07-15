@@ -21,10 +21,18 @@ export const useRoomStore = create((set, get) => ({
   // Initialize client-side only values (without auto room creation)
   initialize: () => {
     if (typeof window !== 'undefined') {
-      const userId = Math.random().toString(36).substring(2, 15);
-      const username = `User_${Math.random().toString(36).substring(2, 5)}`;
+      const state = get();
       
-      set({ userId, username });
+      // Only set userId and username if they don't exist
+      if (!state.userId) {
+        const userId = Math.random().toString(36).substring(2, 15);
+        set({ userId });
+      }
+      
+      if (!state.username) {
+        const username = `User_${Math.random().toString(36).substring(2, 5)}`;
+        set({ username });
+      }
     }
   },
 }));

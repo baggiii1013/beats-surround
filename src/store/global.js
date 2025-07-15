@@ -2,6 +2,7 @@ import { toast } from 'sonner';
 import { create } from 'zustand';
 import { createPlaceholderCoverArt, extractAudioMetadata } from '../lib/audioMetadata';
 import { createHighPrecisionTimer, getAudioController, getSyncEngine } from '../lib/audioSync';
+import { fetchDefaultAudioFiles } from '../lib/r2-api';
 
 const MAX_NTP_MEASUREMENTS = 40;
 
@@ -169,25 +170,51 @@ const initializeAudioContext = () => {
 };
 
 const fetchDefaultAudioSources = async () => {
-  // Return demo audio sources from public/audio directory
-  // Names will be extracted from metadata with explicit ordering
-  return [
-    { 
-      url: '/audio/Sia%20-%20Cheap%20Thrills%20(Performance%20Edit).flac',
-      expectedTitle: 'Cheap Thrills (Performance Edit)',
-      expectedArtist: 'Sia'
-    },
-    { 
-      url: '/audio/Cheap%20Thrills%20feat%20Sean%20Paul%20-%20Sia%20Sean%20Paul%20.flac',
-      expectedTitle: 'Cheap Thrills (feat. Sean Paul)',
-      expectedArtist: 'Sia, Sean Paul'
-    },
-    { 
-      url: '/audio/Sunflower%20-%20Spider-Man%20Into%20the%20Spider-Verse%20-%20Post%20Malone%20Swae%20Lee%20.flac',
-      expectedTitle: 'Sunflower - Spider-Man: Into the Spider-Verse',
-      expectedArtist: 'Post Malone, Swae Lee'
-    },
-  ];
+  try {
+    // Fetch demo audio sources from R2 bucket
+    const r2AudioFiles = await fetchDefaultAudioFiles();
+    
+    if (r2AudioFiles && r2AudioFiles.length > 0) {
+      return r2AudioFiles.map(file => ({
+        url: file.url,
+        name: file.name,
+        id: file.id,
+        type: 'r2-default',
+        size: file.size
+      }));
+    }
+    
+    // Fallback to local files if R2 is not available
+    // return [
+    //   { 
+    //     url: '/audio/Sia%20-%20Cheap%20Thrills%20(Performance%20Edit).flac',
+    //     expectedTitle: 'Cheap Thrills (Performance Edit)',
+    //     expectedArtist: 'Sia',
+    //     name: 'Cheap Thrills (Performance Edit)',
+    //     id: '/audio/Sia%20-%20Cheap%20Thrills%20(Performance%20Edit).flac',
+    //     type: 'local'
+    //   },
+    //   { 
+    //     url: '/audio/Cheap%20Thrills%20feat%20Sean%20Paul%20-%20Sia%20Sean%20Paul%20.flac',
+    //     expectedTitle: 'Cheap Thrills (feat. Sean Paul)',
+    //     expectedArtist: 'Sia, Sean Paul',
+    //     name: 'Cheap Thrills (feat. Sean Paul)',
+    //     id: '/audio/Cheap%20Thrills%20feat%20Sean%20Paul%20-%20Sia%20Sean%20Paul%20.flac',
+    //     type: 'local'
+    //   },
+    //   { 
+    //     url: '/audio/Sunflower%20-%20Spider-Man%20Into%20the%20Spider-Verse%20-%20Post%20Malone%20Swae%20Lee%20.flac',
+    //     expectedTitle: 'Sunflower - Spider-Man: Into the Spider-Verse',
+    //     expectedArtist: 'Post Malone, Swae Lee',
+    //     name: 'Sunflower - Spider-Man: Into the Spider-Verse',
+    //     id: '/audio/Sunflower%20-%20Spider-Man%20Into%20the%20Spider-Verse%20-%20Post%20Malone%20Swae%20Lee%20.flac',
+    //     type: 'local'
+    //   },
+    // ];
+  } catch (error) {
+    // Return empty array on error
+    return [];
+  }
 };
 
 const calculateWaitTimeMilliseconds = (targetServerTime, offsetEstimate) => {
@@ -817,6 +844,14 @@ export const useGlobalStore = create((set, get) => {
           name: source.name,
           audioBuffer,
           id: source.id,
+          // Preserve metadata if available
+          ...(source.artist && { artist: source.artist }),
+          ...(source.album && { album: source.album }),
+          ...(source.albumArtist && { albumArtist: source.albumArtist }),
+          ...(source.year && { year: source.year }),
+          ...(source.genre && { genre: source.genre }),
+          ...(source.coverArt && { coverArt: source.coverArt }),
+          ...(source.metadata && { metadata: source.metadata }),
         };
 
         set((state) => ({

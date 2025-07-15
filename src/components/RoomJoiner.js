@@ -32,10 +32,9 @@ export default function RoomJoiner() {
   
   // Initialize room store on client side
   useEffect(() => {
-    if (!roomId) {
-      initialize();
-    }
-  }, [roomId, initialize]);
+    // Always initialize to ensure username is set
+    initialize();
+  }, [initialize]);
   
   const handleJoinRoom = async () => {
     if (!roomIdInput.trim()) {
@@ -46,16 +45,27 @@ export default function RoomJoiner() {
     setIsJoining(true);
     
     try {
+      // Normalize room ID to uppercase for consistency
+      const normalizedRoomId = roomIdInput.trim().toUpperCase();
+      
       // Validate room exists by checking with server
-      const response = await fetch(`${API_URL}/api/rooms/${roomIdInput.trim()}`);
+      const response = await fetch(`${API_URL}/api/rooms/${normalizedRoomId}`);
       
       if (response.ok) {
+        const roomData = await response.json();
+        
         // Room exists, join it
         resetStore(); // Reset current state
-        setRoomId(roomIdInput.trim().toUpperCase());
+        
+        // Ensure username is set after reset with a small delay
+        setTimeout(() => {
+          initialize();
+          setRoomId(normalizedRoomId);
+        }, 100);
+        
         setShowJoinForm(false);
         setRoomIdInput('');
-        toast.success(`Joined room ${roomIdInput.trim().toUpperCase()}`);
+        toast.success(`Joined room ${normalizedRoomId}`);
       } else if (response.status === 404) {
         toast.error('Room not found. Please check the room ID.');
       } else {
@@ -72,6 +82,11 @@ export default function RoomJoiner() {
     try {
       resetStore();
       
+      // Ensure username is set after reset with a small delay
+      setTimeout(() => {
+        initialize();
+      }, 100);
+      
       // Create room on server
       const response = await fetch(`${API_URL}/api/rooms`, {
         method: 'POST',
@@ -82,18 +97,24 @@ export default function RoomJoiner() {
       
       if (response.ok) {
         const data = await response.json();
-        setRoomId(data.roomId);
+        setTimeout(() => {
+          setRoomId(data.roomId);
+        }, 150);
         toast.success(`Created new room: ${data.roomId}`);
       } else {
         // Fallback to client-side generation
         const newRoomId = generateNewRoomId();
-        setRoomId(newRoomId);
+        setTimeout(() => {
+          setRoomId(newRoomId);
+        }, 150);
         toast.success(`Created new room: ${newRoomId}`);
       }
     } catch (error) {
       // Fallback to client-side generation
       const newRoomId = generateNewRoomId();
-      setRoomId(newRoomId);
+      setTimeout(() => {
+        setRoomId(newRoomId);
+      }, 150);
       toast.success(`Created new room: ${newRoomId}`);
     }
   };

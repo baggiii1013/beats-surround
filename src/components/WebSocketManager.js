@@ -123,9 +123,9 @@ export default function WebSocketManager() {
             bytesReceived: (connectionStatus.bytesReceived || 0) + event.data.length
           });
           
-          // Log non-NTP messages for debugging
+          // Handle different message types
           if (message.type !== ServerActionTypes.NTP_RESPONSE) {
-            // Silent for production
+            // Process non-NTP messages
           }
           
           handleServerMessage(message);
@@ -313,6 +313,10 @@ export default function WebSocketManager() {
         handleNewAudioSource(message);
         break;
         
+      case 'NEW_AUDIO_SOURCE_R2':
+        handleNewAudioSourceR2(message);
+        break;
+        
       default:
         // Unknown message type - silently ignore
     }
@@ -428,6 +432,45 @@ export default function WebSocketManager() {
       toast.success(`New audio: ${audioName}`);
     } catch (error) {
       toast.error('Failed to load shared audio');
+    }
+  };
+
+  const handleNewAudioSourceR2 = async (message) => {
+    try {
+      const { audioSource } = message;
+      
+      // For R2 sources, we need to fetch the audio data from the public URL
+      const response = await fetch(audioSource.url);
+      if (!response.ok) {
+        throw new Error('Failed to fetch audio from R2');
+      }
+      
+      const arrayBuffer = await response.arrayBuffer();
+      
+      const newAudioSource = {
+        name: audioSource.name,
+        audioBuffer: arrayBuffer,
+        id: audioSource.id, // Use the R2 public URL as ID
+        url: audioSource.url, // Store the R2 URL
+        type: 'r2-upload',
+        uploadedAt: audioSource.uploadedAt,
+        // Include metadata if available
+        ...(audioSource.artist && { artist: audioSource.artist }),
+        ...(audioSource.album && { album: audioSource.album }),
+        ...(audioSource.albumArtist && { albumArtist: audioSource.albumArtist }),
+        ...(audioSource.year && { year: audioSource.year }),
+        ...(audioSource.genre && { genre: audioSource.genre }),
+        ...(audioSource.duration && { duration: audioSource.duration }),
+        ...(audioSource.coverArt && { coverArt: audioSource.coverArt }),
+        ...(audioSource.metadata && { metadata: audioSource.metadata })
+      };
+      
+      // Add to global store
+      await addAudioSource(newAudioSource);
+      
+      toast.success(`New audio uploaded: ${audioSource.name}`);
+    } catch (error) {
+      toast.error('Failed to load uploaded audio');
     }
   };
   

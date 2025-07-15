@@ -46,14 +46,7 @@ export default function UserGrid({ className, ...rest }) {
     setIsDraggingListeningSource(false);
   };
 
-  // Mock connected clients for demo
-  const mockClients = [
-    { clientId: '1', username: 'John Doe', position: { x: 20, y: 30 }, isActive: true },
-    { clientId: '2', username: 'Jane Smith', position: { x: 70, y: 60 }, isActive: false },
-    { clientId: '3', username: 'Bob Johnson', position: { x: 40, y: 80 }, isActive: true },
-  ];
-
-  const clients = connectedClients.length > 0 ? connectedClients : mockClients;
+  const clients = connectedClients;
 
   return (
     <div className={cn("h-full flex flex-col", className)} {...rest}>

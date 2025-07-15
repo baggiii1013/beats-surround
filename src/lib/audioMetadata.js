@@ -46,7 +46,6 @@ export async function extractAudioMetadata(arrayBuffer, url) {
       genre,
       duration,
       coverArt,
-      // Keep original data for debugging
       originalMetadata: metadata
     };
   } catch (error) {
