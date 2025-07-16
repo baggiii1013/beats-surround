@@ -301,7 +301,7 @@ export const useGlobalStore = create((set, get) => {
           loadedSources.push(audioSource);
           
         } catch (loadError) {
-          console.warn('Failed to load audio source:', audioInfo.url, loadError);
+          // Silently continue if source fails to load
         }
       }
       
@@ -328,7 +328,6 @@ export const useGlobalStore = create((set, get) => {
       });
       
     } catch (error) {
-      console.error('Failed to load audio sources:', error);
       set({ 
         isLoadingSources: false,
         audioSourcesLoaded: true // Mark as loaded even on error to prevent infinite retries
@@ -373,16 +372,16 @@ export const useGlobalStore = create((set, get) => {
           sampleRate: 44100,
         });
       } catch (audioContextError) {
-        console.error('Failed to create AudioContext:', audioContextError);
         throw audioContextError;
       }
       
-      // Try to resume the context if it's suspended
+      // IMPORTANT: Only try to resume if user has interacted
+      // This prevents autoplay policy violations
       if (audioContext.state === 'suspended') {
         try {
           await audioContext.resume();
         } catch (resumeError) {
-          // Don't throw here - suspended context is still usable
+          // Don't throw here - suspended context is still usable for later resumption
         }
       }
       
@@ -406,13 +405,12 @@ export const useGlobalStore = create((set, get) => {
           audioController: getAudioController(audioContext)
         },
         isInitingAudioContext: false,
-        hasUserInteracted: true
+        hasUserInteracted: true // Mark that user has interacted
       });
       
       return true;
       
     } catch (error) {
-      console.error('Critical audio context initialization error:', error);
       set({ 
         isInitingAudioContext: false,
         audioPlayer: null
@@ -469,6 +467,9 @@ export const useGlobalStore = create((set, get) => {
         if (audioContext.state === 'suspended' || audioContext.state === 'interrupted') {
           await audioContext.resume();
           
+          // Give it a moment to transition states
+          await new Promise(resolve => setTimeout(resolve, 100));
+          
           // Verify context is actually running
           if (audioContext.state === 'running') {
             // Update state to reflect successful resume
@@ -476,7 +477,8 @@ export const useGlobalStore = create((set, get) => {
               audioPlayer: {
                 ...state.audioPlayer,
                 suspended: false,
-              }
+              },
+              hasUserInteracted: true
             });
             
             return true;
@@ -490,15 +492,16 @@ export const useGlobalStore = create((set, get) => {
             audioPlayer: {
               ...state.audioPlayer,
               suspended: false,
-            }
+            },
+            hasUserInteracted: true
           });
           
           return true;
+        } else if (audioContext.state === 'closed') {
+          return false;
         }
         
       } catch (error) {
-        console.error('Failed to resume audio context:', error);
-        
         // Try to create a fresh audio context as fallback
         try {
           const newAudioContext = initializeAudioContext();
@@ -529,7 +532,7 @@ export const useGlobalStore = create((set, get) => {
           }
           
         } catch (fallbackError) {
-          console.error('Failed to create fallback audio context:', fallbackError);
+          // Silent fallback failure
         }
       }
       

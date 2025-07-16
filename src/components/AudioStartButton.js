@@ -31,14 +31,9 @@ export default function AudioStartButton({
     setIsStarting(true);
     
     try {
-      const success = await initializeAudioContext();
-      
-      if (!success) {
-        console.error('Failed to initialize audio context');
-      }
-      
+      await initializeAudioContext();
     } catch (error) {
-      console.error('Failed to start audio:', error);
+      // Error handling without console logging
     } finally {
       setIsStarting(false);
     }

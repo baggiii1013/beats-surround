@@ -66,7 +66,6 @@ export default function LoadingScreen() {
       }
       
     } catch (error) {
-      console.error('Failed to start audio:', error);
       setShowError(true);
     }
   };

@@ -76,25 +76,24 @@ export default function Player() {
   const handlePlay = useCallback(async () => {
     let state = useGlobalStore.getState();
     
-    // If no audio context exists, initialize it now
+    // Check if we need to initialize or resume audio context
     if (!state.audioPlayer?.audioContext) {
-      try {
-        const initSuccess = await state.initializeAudioContext();
-        
-        if (!initSuccess) {
-          console.error('Failed to initialize audio context');
-          // Show user-friendly message
-          toast.error('Unable to start audio. Please try clicking the Enable Audio button.');
-          return;
-        }
-        
-        // Get fresh state after initialization
-        state = useGlobalStore.getState();
-      } catch (error) {
-        console.error('Audio context initialization failed:', error);
-        toast.error('Audio initialization failed. Please refresh and try again.');
+      toast.error('Please enable audio first by clicking the "Start Audio System" button.', {
+        duration: 3000
+      });
+      return;
+    }
+    
+    // If context is suspended, try to resume it
+    if (state.audioPlayer.audioContext.state === 'suspended') {
+      const resumed = await resumeAudioContext();
+      if (!resumed) {
+        toast.error('Unable to resume audio. Please try clicking the "Start Audio System" button again.');
         return;
       }
+      
+      // Get fresh state after resume
+      state = useGlobalStore.getState();
     }
     
     // Ensure audio context is running
@@ -102,7 +101,6 @@ export default function Player() {
       const resumed = await state.resumeAudioContext();
       
       if (!resumed) {
-        console.error('Failed to resume audio context');
         toast.error('Unable to resume audio. Please try the Enable Audio button.');
         return;
       }

@@ -13,48 +13,14 @@ import { useGlobalStore } from '../store/global';
 import { useRoomStore } from '../store/room';
 
 export default function Home() {
-  const isInitingSystem = useGlobalStore((state) => state.isInitingSystem);
-  const audioSources = useGlobalStore((state) => state.audioSources);
-  const initializeAudio = useGlobalStore((state) => state.initializeAudio);
+  // Only get the room state - let AudioInitializer handle audio initialization
   const roomId = useRoomStore((state) => state.roomId);
   const initialize = useRoomStore((state) => state.initialize);
-  const [hasInitialized, setHasInitialized] = useState(false);
   
   // Initialize room store
   useEffect(() => {
     initialize();
   }, [initialize]);
-  
-  // Initialize audio system only once when component mounts
-  useEffect(() => {
-    if (!hasInitialized && !isInitingSystem && audioSources.length === 0) {
-      setHasInitialized(true);
-      useGlobalStore.setState({ isInitingSystem: true });
-      // Add a small delay to ensure state update is processed
-      setTimeout(() => {
-        initializeAudio().catch(() => {
-          // If initialization fails, still mark as initialized to prevent retry loops
-        });
-      }, 50);
-    }
-  }, [hasInitialized, isInitingSystem, audioSources.length, initializeAudio]);
-  
-  // Force exit initialization if we have audio sources but are still initializing
-  useEffect(() => {
-    if (isInitingSystem && audioSources.length > 0) {
-      useGlobalStore.setState({ isInitingSystem: false });
-    }
-  }, [isInitingSystem, audioSources.length]);
-  
-  // Show loading screen while initializing
-  if (isInitingSystem) {
-    return (
-      <>
-        <AudioInitializer />
-        <LoadingScreen />
-      </>
-    );
-  }
 
   // Show room selector if no room is selected
   if (!roomId) {
@@ -70,9 +36,11 @@ export default function Home() {
     <div className="min-h-screen bg-black text-white">
       <Toaster position="top-right" />
       <SpatialAudioBackground />
-      <AudioInitializer />
-      <WebSocketManager />
       
+      {/* AudioInitializer handles all initialization logic and UI */}
+      <AudioInitializer />
+      
+      <WebSocketManager />
       <ResponsiveLayout />
     </div>
   );

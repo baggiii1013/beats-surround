@@ -16,18 +16,12 @@ export default function AudioStatusIndicator() {
   const handleEnableAudio = async () => {
     try {
       if (!audioPlayer?.audioContext) {
-        const success = await initializeAudioContext();
-        if (!success) {
-          console.error('Failed to initialize audio context');
-        }
+        await initializeAudioContext();
       } else if (audioContextState === 'suspended') {
-        const resumed = await useGlobalStore.getState().resumeAudioContext();
-        if (!resumed) {
-          console.error('Failed to resume audio context');
-        }
+        await useGlobalStore.getState().resumeAudioContext();
       }
     } catch (error) {
-      console.error('Error enabling audio:', error);
+      // Error handling without console logging
     }
   };
 
