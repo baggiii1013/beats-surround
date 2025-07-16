@@ -11,6 +11,7 @@ import {
   VolumeX
 } from 'lucide-react';
 import { useCallback, useEffect, useState } from 'react';
+import { toast } from 'sonner';
 import { cn, formatTime } from '../lib/utils';
 import { useGlobalStore } from '../store/global';
 import { Button } from './ui/button';
@@ -73,20 +74,50 @@ export default function Player() {
   }, [isPlaying, getCurrentTrackPosition, isDragging]);
 
   const handlePlay = useCallback(async () => {
-    // Try to resume audio context first (for browser autoplay restrictions)
-    const resumed = await resumeAudioContext();
+    let state = useGlobalStore.getState();
     
-    if (!resumed && audioPlayer?.suspended) {
-      // Audio context couldn't be resumed - show error
-      return;
+    // If no audio context exists, initialize it now
+    if (!state.audioPlayer?.audioContext) {
+      try {
+        const initSuccess = await state.initializeAudioContext();
+        
+        if (!initSuccess) {
+          console.error('Failed to initialize audio context');
+          // Show user-friendly message
+          toast.error('Unable to start audio. Please try clicking the Enable Audio button.');
+          return;
+        }
+        
+        // Get fresh state after initialization
+        state = useGlobalStore.getState();
+      } catch (error) {
+        console.error('Audio context initialization failed:', error);
+        toast.error('Audio initialization failed. Please refresh and try again.');
+        return;
+      }
     }
     
+    // Ensure audio context is running
+    if (state.audioPlayer?.audioContext?.state === 'suspended') {
+      const resumed = await state.resumeAudioContext();
+      
+      if (!resumed) {
+        console.error('Failed to resume audio context');
+        toast.error('Unable to resume audio. Please try the Enable Audio button.');
+        return;
+      }
+      
+      // Get fresh state after resume
+      state = useGlobalStore.getState();
+    }
+    
+    // Now proceed with play/pause
     if (isPlaying) {
       broadcastPause();
     } else {
       broadcastPlay(sliderPosition);
     }
-  }, [isPlaying, broadcastPause, broadcastPlay, sliderPosition, resumeAudioContext, audioPlayer]);
+  }, [isPlaying, broadcastPause, broadcastPlay, sliderPosition]);
 
   const handleSkipBack = useCallback(() => {
     if (!isShuffled) {

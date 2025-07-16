@@ -21,15 +21,18 @@ const initialState = {
   isPlaying: false,
   currentTime: 0,
   duration: 0,
-  volume: 0.5,
+  volume: 0.8,
   isShuffled: false,
   
   // Audio sources and selection
   audioSources: [],
   selectedAudioId: null,
+  audioSourcesLoaded: false, // Track if sources are loaded separately from context
   
-  // System state
-  isInitingSystem: false, // Changed from true to false
+  // System state - Separate loading from audio context initialization
+  isLoadingSources: false,
+  isInitingAudioContext: false,
+  hasUserInteracted: false,
   audioPlayer: null,
   
   // Network and sync - Enhanced for WebSocket
@@ -249,286 +252,288 @@ const calculateOffsetEstimate = (measurements) => {
 };
 
 export const useGlobalStore = create((set, get) => {
-  // Add a timeout to prevent infinite loading
-  setTimeout(() => {
-    const state = get();
-    if (state.isInitingSystem) {
-      set({ isInitingSystem: false });
-    }
-  }, 30000); // 30 second timeout for loading large FLAC files
+  // Mutex to prevent concurrent operations
+  let sourceLoadingInProgress = false;
+  let audioContextInitInProgress = false;
   
-  // Function to initialize or reinitialize audio system
-  const initializeAudio = async () => {
+  // Safety timeout to reset stuck initialization flags
+  let initTimeoutId = null;
+  
+  // Reset function for stuck initialization
+  const resetInitializationFlags = () => {
+    sourceLoadingInProgress = false;
+    audioContextInitInProgress = false;
+    set({ 
+      isLoadingSources: false, 
+      isInitingAudioContext: false 
+    });
+    if (initTimeoutId) {
+      clearTimeout(initTimeoutId);
+      initTimeoutId = null;
+    }
+  };
+  
+  // Function to load audio sources without initializing audio context
+  const loadAudioSources = async () => {
+    if (sourceLoadingInProgress) {
+      return;
+    }
+    
+    sourceLoadingInProgress = true;
+    set({ isLoadingSources: true });
     
     try {
-      // First, try to create a minimal audio context to test browser support
-      let audioContext;
+      const demoAudioList = await fetchDefaultAudioSources();
+      const loadedSources = [];
       
-      try {
-        audioContext = initializeAudioContext();
-      } catch (audioContextError) {
-        // Fallback: Initialize without audio context
-        const fallbackSource = {
-          name: 'Audio Unavailable',
-          audioBuffer: null,
-          id: 'no-audio',
-        };
-        
+      // Create a temporary audio context just for decoding audio data
+      const tempAudioContext = new (window.AudioContext || window.webkitAudioContext)();
+      
+      for (const audioInfo of demoAudioList) {
+        try {
+          const audioSource = await loadAudioSourceUrl({ 
+            url: audioInfo.url, 
+            audioContext: tempAudioContext,
+            expectedTitle: audioInfo.expectedTitle || audioInfo.name,
+            expectedArtist: audioInfo.expectedArtist || 'Unknown Artist'
+          });
+          
+          loadedSources.push(audioSource);
+          
+        } catch (loadError) {
+          console.warn('Failed to load audio source:', audioInfo.url, loadError);
+        }
+      }
+      
+      // Close the temporary audio context
+      tempAudioContext.close();
+      
+      if (loadedSources.length === 0) {
         set({
-          audioSources: [fallbackSource],
-          audioPlayer: null,
-          downloadedAudioIds: new Set(['no-audio']),
-          duration: 0,
-          selectedAudioId: fallbackSource.id,
-          isInitingSystem: false,
+          audioSources: [],
+          audioSourcesLoaded: true,
+          isLoadingSources: false
         });
-        
         return;
       }
       
-      // Check if audioContext is suspended (common in modern browsers with autoplay restrictions)
+      const firstSource = loadedSources[0];
+      
+      set({
+        audioSources: loadedSources,
+        audioSourcesLoaded: true,
+        selectedAudioId: firstSource.id,
+        duration: firstSource.audioBuffer?.duration || 0,
+        isLoadingSources: false
+      });
+      
+    } catch (error) {
+      console.error('Failed to load audio sources:', error);
+      set({ 
+        isLoadingSources: false,
+        audioSourcesLoaded: true // Mark as loaded even on error to prevent infinite retries
+      });
+    } finally {
+      sourceLoadingInProgress = false;
+    }
+  };
+  
+  // Function to initialize audio context when needed for playback
+  const initializeAudioContext = async () => {
+    const state = get();
+    
+    // Return early if already initialized and running
+    if (state.audioPlayer?.audioContext?.state === 'running') {
+      return true;
+    }
+    
+    if (audioContextInitInProgress) {
+      return false;
+    }
+    
+    audioContextInitInProgress = true;
+    set({ isInitingAudioContext: true });
+    
+    // Safety timeout to prevent getting stuck
+    initTimeoutId = setTimeout(() => {
+      resetInitializationFlags();
+    }, 10000); // 10 second timeout
+    
+    try {
+      // Check if we're in a browser environment
+      if (typeof window === 'undefined') {
+        throw new Error('Server environment not supported');
+      }
+      
+      let audioContext;
+      
+      try {
+        audioContext = new (window.AudioContext || window.webkitAudioContext)({
+          latencyHint: 'interactive',
+          sampleRate: 44100,
+        });
+      } catch (audioContextError) {
+        console.error('Failed to create AudioContext:', audioContextError);
+        throw audioContextError;
+      }
+      
+      // Try to resume the context if it's suspended
       if (audioContext.state === 'suspended') {
-        // Continue with loading audio files even with suspended context
-        // The files will be loaded but marked as requiring user interaction
+        try {
+          await audioContext.resume();
+        } catch (resumeError) {
+          // Don't throw here - suspended context is still usable
+        }
       }
       
       // Create master gain node for volume control
       const gainNode = audioContext.createGain();
-      gainNode.gain.value = 1; // Default volume
+      gainNode.gain.value = 0.8;
+      gainNode.connect(audioContext.destination);
       
-      // Load demo audio files from public/audio directory
-      try {
-        const demoAudioList = await fetchDefaultAudioSources();
-        const loadedSources = [];
-        
-        for (const audioInfo of demoAudioList) {
-          try {
-            const audioSource = await loadAudioSourceUrl({ 
-              url: audioInfo.url, 
-              audioContext,
-              expectedTitle: audioInfo.expectedTitle,
-              expectedArtist: audioInfo.expectedArtist
-            });
-            
-            loadedSources.push({
-              ...audioSource,
-              requiresUserInteraction: audioContext.state === 'suspended', // Mark if context is suspended
-            });
-          } catch (loadError) {
-            // Continue with other files
-          }
-        }
-        
-        if (loadedSources.length === 0) {
-          // Fallback to silent demo track if no files could be loaded
-          const sampleRate = audioContext.sampleRate;
-          const duration = 10;
-          const buffer = audioContext.createBuffer(1, sampleRate * duration, sampleRate);
-          const data = buffer.getChannelData(0);
-          
-          for (let i = 0; i < data.length; i++) {
-            data[i] = 0; // Silent track
-          }
-          
-          loadedSources.push({
-            name: 'Demo Track (Silent)',
-            audioBuffer: buffer,
-            id: 'demo-track-silent',
-          });
-        }
-        
-        // Create a dummy source node (will be replaced when playing)
-        const sourceNode = audioContext.createBufferSource();
-        
-        // Use the first loaded source as the initial selection
-        const firstSource = loadedSources[0];
-        sourceNode.buffer = firstSource.audioBuffer;
-        sourceNode.connect(gainNode);
-        gainNode.connect(audioContext.destination);
-        
-        // Update the store state with all loaded sources and enhanced audio system
-        const syncEngine = getSyncEngine();
-        const audioController = getAudioController(audioContext);
-        
-        set({
-          audioSources: loadedSources,
-          audioPlayer: {
-            audioContext,
-            sourceNode,
-            gainNode,
-            suspended: audioContext.state === 'suspended',
-            syncEngine,
-            audioController
-          },
-          downloadedAudioIds: new Set(loadedSources.map(source => source.id)),
-          duration: firstSource.audioBuffer?.duration || 0,
-          selectedAudioId: firstSource.id,
-          isInitingSystem: false,
-        });
-        
-      } catch (audioLoadError) {
-        
-        // Fallback to silent demo track
-        const sampleRate = audioContext.sampleRate;
-        const duration = 10;
-        const buffer = audioContext.createBuffer(1, sampleRate * duration, sampleRate);
-        const data = buffer.getChannelData(0);
-        
-        for (let i = 0; i < data.length; i++) {
-          data[i] = 0;
-        }
-        
-        const fallbackSource = {
-          name: 'Demo Track (Fallback)',
-          audioBuffer: buffer,
-          id: 'demo-track-fallback',
-        };
-        
-        const sourceNode = audioContext.createBufferSource();
-        sourceNode.buffer = fallbackSource.audioBuffer;
-        sourceNode.connect(gainNode);
-        gainNode.connect(audioContext.destination);
-        
-        set({
-          audioSources: [fallbackSource],
-          audioPlayer: {
-            audioContext,
-            sourceNode,
-            gainNode,
-            suspended: false,
-          },
-          downloadedAudioIds: new Set(['demo-track-fallback']),
-          duration: fallbackSource.audioBuffer.duration,
-          selectedAudioId: fallbackSource.id,
-          isInitingSystem: false,
-        });
-      }
+      // Create a placeholder source node
+      const sourceNode = audioContext.createBufferSource();
+      sourceNode.connect(gainNode);
       
-    } catch (error) {
-      
-      // Set initialization as complete even on error to prevent infinite loading
-      set({ 
-        isInitingSystem: false,
-        audioSources: [], // Empty array to indicate no audio available
+      // Set audio player state
+      set({
+        audioPlayer: {
+          audioContext,
+          sourceNode,
+          gainNode,
+          suspended: audioContext.state === 'suspended',
+          syncEngine: getSyncEngine(),
+          audioController: getAudioController(audioContext)
+        },
+        isInitingAudioContext: false,
+        hasUserInteracted: true
       });
       
-      // Show user-friendly error message
-      try {
-        if (typeof toast !== 'undefined') {
-          toast.error("Failed to initialize audio system. Please refresh the page and try again.");
-        }
-      } catch (toastError) {
-        // Silent fallback
+      return true;
+      
+    } catch (error) {
+      console.error('Critical audio context initialization error:', error);
+      set({ 
+        isInitingAudioContext: false,
+        audioPlayer: null
+      });
+      return false;
+    } finally {
+      audioContextInitInProgress = false;
+      if (initTimeoutId) {
+        clearTimeout(initTimeoutId);
+        initTimeoutId = null;
       }
     }
   };
-
-  // Client-side initialization - called after component mount
-  if (typeof window !== 'undefined') {
-    // Safari/iOS specific setup
-    if (window.navigator?.audioSession) {
-      try {
-        window.navigator.audioSession.type = 'playback';
-      } catch (e) {
-        // Ignore if not available
-      }
+  
+  // Legacy function for backward compatibility - now just calls both functions
+  const initializeAudio = async () => {
+    const state = get();
+    
+    // Load sources if not already loaded
+    if (!state.audioSourcesLoaded) {
+      await loadAudioSources();
     }
+    
+    // Initialize audio context
+    return await initializeAudioContext();
+  };
 
-    // Initialize audio system with a slight delay to ensure DOM is ready
-    setTimeout(() => {
-      const state = get();
-      if (state.audioSources.length === 0 && !state.isInitingSystem) {
-        initializeAudio();
-      }
-    }, 100);
-  }
+  // Remove automatic initialization on mount - let AudioInitializer handle it
+  // This prevents premature initialization before user interaction
 
   return {
     // Initialize with initialState
     ...initialState,
 
-    // Initialize method for client-side initialization
+    // New separate methods for better control
+    loadAudioSources,
+    initializeAudioContext,
+    
+    // Legacy method for backward compatibility
     initializeAudio,
 
-    // Method to resume audio context (for handling browser autoplay restrictions)
+    // Enhanced method to resume audio context (inspired by BeatSync approach)
     resumeAudioContext: async () => {
       const state = get();
-      if (state.audioPlayer?.audioContext) {
-        const { audioContext } = state.audioPlayer;
-        
-        // Check multiple suspended states (Safari can have different states)
+      
+      if (!state.audioPlayer?.audioContext) {
+        return false;
+      }
+      
+      const { audioContext } = state.audioPlayer;
+      
+      try {
+        // Check if context needs resuming
         if (audioContext.state === 'suspended' || audioContext.state === 'interrupted') {
-          try {
-            await audioContext.resume();
-            
-            // Safari-specific: Re-create gain node if needed
-            if (!state.audioPlayer.gainNode || state.audioPlayer.gainNode.context !== audioContext) {
-              const gainNode = audioContext.createGain();
-              gainNode.gain.value = state.volume || 0.5;
-              gainNode.connect(audioContext.destination);
-              
-              set({
-                audioPlayer: {
-                  ...state.audioPlayer,
-                  gainNode,
-                  suspended: false,
-                }
-              });
-            }
-            
-            // Update the audio sources to remove the requiresUserInteraction flag
-            const updatedAudioSources = state.audioSources.map(source => ({
-              ...source,
-              requiresUserInteraction: false,
-            }));
-            
-            // Update the store to mark audio as no longer suspended
+          await audioContext.resume();
+          
+          // Verify context is actually running
+          if (audioContext.state === 'running') {
+            // Update state to reflect successful resume
             set({
-              audioSources: updatedAudioSources,
               audioPlayer: {
                 ...state.audioPlayer,
                 suspended: false,
-              },
+              }
             });
             
-            return true; // Successfully resumed
-            
-          } catch (error) {
-            // Safari fallback: Try to create a new audio context
-            try {
-              const newAudioContext = initializeAudioContext();
-              if (newAudioContext.state === 'running') {
-                const gainNode = newAudioContext.createGain();
-                gainNode.gain.value = state.volume || 0.5;
-                gainNode.connect(newAudioContext.destination);
-                
-                set({
-                  audioPlayer: {
-                    ...state.audioPlayer,
-                    audioContext: newAudioContext,
-                    gainNode,
-                    suspended: false,
-                  }
-                });
-                
-                return true;
-              }
-            } catch (fallbackError) {
-              // Silent fallback
-            }
+            return true;
+          } else {
+            return false;
           }
+          
         } else if (audioContext.state === 'running') {
-          // Already running, just ensure proper state
+          // Ensure state is consistent
           set({
             audioPlayer: {
               ...state.audioPlayer,
               suspended: false,
             }
           });
+          
           return true;
         }
+        
+      } catch (error) {
+        console.error('Failed to resume audio context:', error);
+        
+        // Try to create a fresh audio context as fallback
+        try {
+          const newAudioContext = initializeAudioContext();
+          
+          if (newAudioContext.state === 'running') {
+            // Create new gain node
+            const gainNode = newAudioContext.createGain();
+            gainNode.gain.value = state.volume || 0.8;
+            gainNode.connect(newAudioContext.destination);
+            
+            // Create new source node
+            const sourceNode = newAudioContext.createBufferSource();
+            sourceNode.connect(gainNode);
+            
+            set({
+              audioPlayer: {
+                ...state.audioPlayer,
+                audioContext: newAudioContext,
+                gainNode,
+                sourceNode,
+                suspended: false,
+                syncEngine: getSyncEngine(),
+                audioController: getAudioController(newAudioContext)
+              }
+            });
+            
+            return true;
+          }
+          
+        } catch (fallbackError) {
+          console.error('Failed to create fallback audio context:', fallbackError);
+        }
       }
-      return false; // Failed to resume
+      
+      return false;
     },
 
     // Audio control methods
@@ -1188,16 +1193,25 @@ export const useGlobalStore = create((set, get) => {
         }
       }
 
-      // Reset audio-related state but keep room and sync state
+      // Reset audio-related state but keep demo sources and their loaded state
+      // Only clear user-uploaded content and playback state
+      const demoSources = state.audioSources.filter(source => 
+        source.type === 'r2-default' || source.type === 'local'
+      );
+      
       set({
-        audioSources: [],
-        selectedAudioId: null,
+        // Keep demo audio sources, only clear user uploads
+        audioSources: demoSources,
+        selectedAudioId: demoSources.length > 0 ? demoSources[0].id : null,
         isPlaying: false,
         currentTime: 0,
-        duration: 0,
+        duration: demoSources.length > 0 ? demoSources[0].audioBuffer?.duration || 0 : 0,
         playbackStartTime: 0,
         playbackOffset: 0,
         audioPlayer: null,
+        // Keep audioSourcesLoaded true if we have demo sources
+        audioSourcesLoaded: demoSources.length > 0 ? true : false,
+        // Only clear user-uploaded content tracking
         downloadedAudioIds: new Set(),
         uploadHistory: [],
         isInitingSystem: false, // Allow re-initialization
@@ -1236,5 +1250,8 @@ export const useGlobalStore = create((set, get) => {
       if (!state.audioPlayer) return 1;
       return state.audioPlayer.gainNode.gain.value;
     },
+
+    // Reset initialization flags (for debugging/recovery)
+    resetInitializationFlags,
   };
 });

@@ -1,88 +1,63 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useGlobalStore } from '../store/global';
 import { useRoomStore } from '../store/room';
 
 export default function AudioInitializer() {
-  const initializeAudio = useGlobalStore((state) => state.initializeAudio);
-  const resumeAudioContext = useGlobalStore((state) => state.resumeAudioContext);
-  const isInitingSystem = useGlobalStore((state) => state.isInitingSystem);
+  const loadAudioSources = useGlobalStore((state) => state.loadAudioSources);
   const audioSources = useGlobalStore((state) => state.audioSources);
-  const audioPlayer = useGlobalStore((state) => state.audioPlayer);
+  const audioSourcesLoaded = useGlobalStore((state) => state.audioSourcesLoaded);
+  const isLoadingSources = useGlobalStore((state) => state.isLoadingSources);
   const roomId = useRoomStore((state) => state.roomId);
+  
   const [mounted, setMounted] = useState(false);
-  const [userInteractionDetected, setUserInteractionDetected] = useState(false);
-  const [hasInitializedForRoom, setHasInitializedForRoom] = useState(null);
+  const loadingAttempted = useRef(false);
+  const lastRoomId = useRef(null);
 
   // Ensure we're on the client side
   useEffect(() => {
     setMounted(true);
   }, []);
 
-  // Safari compatibility: detect user interaction to unlock audio
+  // Load audio sources when component mounts or room changes
   useEffect(() => {
-    if (!mounted || userInteractionDetected) return;
-
-    const handleUserInteraction = async () => {
-      setUserInteractionDetected(true);
-      
-      // Try to resume audio context if it exists and is suspended
-      if (audioPlayer?.audioContext?.state === 'suspended') {
-        await resumeAudioContext();
-      }
-    };
-
-    // Listen for various user interaction events
-    const events = ['click', 'touchstart', 'keydown', 'pointerdown'];
-    events.forEach(event => {
-      document.addEventListener(event, handleUserInteraction, { once: true, passive: true });
-    });
-
-    return () => {
-      events.forEach(event => {
-        document.removeEventListener(event, handleUserInteraction);
-      });
-    };
-  }, [mounted, userInteractionDetected, audioPlayer, resumeAudioContext]);
-
-  useEffect(() => {
-    if (!mounted) return; // Don't run on server side
+    if (!mounted) return;
     
-    // Initialize audio when:
-    // 1. System is in init state and has no audio sources (first time)
-    // 2. User just joined/created a room and has no audio sources
-    const shouldInitialize = (
-      (isInitingSystem && audioSources.length === 0) ||
-      (roomId && roomId !== hasInitializedForRoom && audioSources.length === 0 && !isInitingSystem)
+    // Load sources if:
+    // 1. We haven't loaded them yet and aren't currently loading
+    // 2. Room changed and we need fresh sources (but only if sources aren't already loaded)
+    const shouldLoadSources = (
+      (!audioSourcesLoaded && !isLoadingSources && !loadingAttempted.current) ||
+      (roomId && roomId !== lastRoomId.current && !isLoadingSources && !audioSourcesLoaded)
     );
     
-    if (shouldInitialize) {
-      // Mark that we're initializing for this room
-      setHasInitializedForRoom(roomId);
+    if (shouldLoadSources) {
+      loadingAttempted.current = true;
+      lastRoomId.current = roomId;
       
-      // Set init state if not already set
-      if (!isInitingSystem) {
-        useGlobalStore.setState({ isInitingSystem: true });
-      }
-      
-      // Detect Safari/iOS
-      const isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
-      const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
-      
-      // Use appropriate timeout for Safari/iOS vs other browsers
-      const delay = (isSafari || isIOS) ? 200 : 50;
-      
-      const timeoutId = setTimeout(() => {
-        initializeAudio().catch(error => {
-          // Set a fallback state to prevent infinite loading
-          useGlobalStore.setState({ isInitingSystem: false });
-        });
-      }, delay);
+      // Load sources with a small delay to prevent race conditions
+      const timeoutId = setTimeout(async () => {
+        try {
+          await loadAudioSources();
+        } catch (error) {
+          console.error('Failed to load audio sources:', error);
+          loadingAttempted.current = false; // Allow retry
+        }
+      }, 100);
 
-      return () => clearTimeout(timeoutId);
+      return () => {
+        clearTimeout(timeoutId);
+      };
     }
-  }, [mounted, isInitingSystem, audioSources.length, roomId, hasInitializedForRoom, initializeAudio]);
+  }, [mounted, audioSourcesLoaded, isLoadingSources, roomId, loadAudioSources]);
+
+  // Reset loading state when room changes
+  useEffect(() => {
+    if (roomId !== lastRoomId.current) {
+      loadingAttempted.current = false;
+    }
+  }, [roomId]);
 
   return null; // This component doesn't render anything
 }
