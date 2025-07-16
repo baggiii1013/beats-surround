@@ -154,7 +154,7 @@ export default function LoadingScreen() {
                 Audio Loading Failed
               </h2>
               <p className="text-gray-300 mb-6">
-                We couldn't load the audio files. This might be due to network issues or browser restrictions.
+                We couldn&apos;t load the audio files. This might be due to network issues or browser restrictions.
               </p>
               <div className="flex gap-4 justify-center">
                 <motion.button
