@@ -9,8 +9,7 @@ const dotenv = require('dotenv');
 const result = dotenv.config();
 
 if (result.error) {
-  console.warn('No .env file found or error loading it:', result.error.message);
-  console.log('Using environment variables from the system/deployment platform');
+  // .env file not found, using system environment variables
 }
 
 // Validate critical environment variables
@@ -745,7 +744,7 @@ server.listen(PORT, () => {
       const activeRoomIds = new Set(rooms.keys());
       await cleanupManager.cleanupOrphanedRooms(activeRoomIds, true); // true = perform deletion
     } catch (error) {
-      console.error('❌ Scheduled orphan cleanup failed:', error);
+      // Scheduled orphan cleanup failed
     }
   };
   
@@ -758,7 +757,7 @@ server.listen(PORT, () => {
 
 // Enhanced graceful shutdown with cleanup manager
 const gracefulShutdown = async (signal) => {
-  console.log(`\n🛑 Received ${signal}. Starting graceful shutdown...`);
+  // Received shutdown signal, starting graceful shutdown
   
   try {
     // Stop accepting new connections
@@ -772,13 +771,13 @@ const gracefulShutdown = async (signal) => {
     
     // Close the server
     server.close(() => {
-      console.log('✅ Server shutdown complete');
+      // Server shutdown complete
       process.exit(0);
     });
     
     // Force exit after 30 seconds
     setTimeout(() => {
-      console.log('⚠️  Forced shutdown after timeout');
+      // Forced shutdown after timeout
       process.exit(1);
     }, 30000);
     

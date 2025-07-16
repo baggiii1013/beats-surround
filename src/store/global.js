@@ -2,6 +2,7 @@ import { toast } from 'sonner';
 import { create } from 'zustand';
 import { createPlaceholderCoverArt, extractAudioMetadata } from '../lib/audioMetadata';
 import { createHighPrecisionTimer, getAudioController, getSyncEngine } from '../lib/audioSync';
+import { initializeMobileAudio, notifyServiceWorkerAudioState } from '../lib/mobileAudio';
 import { fetchDefaultAudioFiles } from '../lib/r2-api';
 
 const MAX_NTP_MEASUREMENTS = 40;
@@ -85,6 +86,9 @@ const initialState = {
   // Playback timing
   playbackStartTime: 0,
   playbackOffset: 0,
+  
+  // Mobile Safari cleanup function
+  mobileSafariCleanup: null,
 };
 
 const getAudioPlayer = (state) => {
@@ -166,6 +170,44 @@ const initializeAudioContext = () => {
       navigator.audioSession.type = 'playback';
     } catch (e) {
       // Ignore if not available
+    }
+  }
+
+  // Additional iOS/Safari mobile optimizations for background playback
+  if (typeof navigator !== 'undefined') {
+    // Prevent iOS from suspending audio context during background
+    if (navigator.userAgent.includes('Safari') || navigator.userAgent.includes('iPhone') || navigator.userAgent.includes('iPad')) {
+      try {
+        // Request persistent audio session for iOS
+        if (navigator.mediaSession) {
+          navigator.mediaSession.metadata = new MediaMetadata({
+            title: 'beats-surround Audio Player',
+            artist: 'beat-surround',
+            album: 'Synchronized Audio'
+          });
+          
+          // Set action handlers to prevent suspension
+          navigator.mediaSession.setActionHandler('play', () => {
+            // Resume audio context if suspended
+            if (audioContext.state === 'suspended') {
+              audioContext.resume();
+            }
+          });
+          
+          navigator.mediaSession.setActionHandler('pause', () => {
+            // Keep context alive but paused
+          });
+        }
+        
+        // Request wake lock to prevent screen-related audio suspension
+        if ('wakeLock' in navigator && navigator.wakeLock) {
+          navigator.wakeLock.request('screen').catch(() => {
+            // Wake lock not available, continue without it
+          });
+        }
+      } catch (e) {
+        // Continue without these optimizations if not available
+      }
     }
   }
   
@@ -401,14 +443,23 @@ export const useGlobalStore = create((set, get) => {
           sourceNode,
           gainNode,
           suspended: audioContext.state === 'suspended',
-          syncEngine: getSyncEngine(),
-          audioController: getAudioController(audioContext)
-        },
-        isInitingAudioContext: false,
-        hasUserInteracted: true // Mark that user has interacted
-      });
-      
-      return true;
+          syncEngine: getSyncEngine(),        audioController: getAudioController(audioContext)
+      },
+      isInitingAudioContext: false,
+      hasUserInteracted: true // Mark that user has interacted
+    });
+    
+    // Start mobile Safari monitoring for background playback
+    get().startMobileSafariMonitor();
+    
+    // Initialize mobile audio features (Media Session API, wake lock, service worker)
+    try {
+      await initializeMobileAudio(get);
+    } catch (mobileError) {
+      // Mobile audio initialization failed - continue without mobile features
+    }
+    
+    return true;
       
     } catch (error) {
       set({ 
@@ -539,9 +590,119 @@ export const useGlobalStore = create((set, get) => {
       return false;
     },
 
-    // Audio control methods
-    playAudio: ({ offset = 0, when = 0, audioIndex = 0 }) => {
+    // Mobile Safari background playback monitor and recovery
+    startMobileSafariMonitor: () => {
+      if (typeof window === 'undefined') return;
+      
       const state = get();
+      
+      // Only start monitor for mobile Safari/iOS
+      const isMobileSafari = /Safari/.test(navigator.userAgent) && 
+                            (/iPad|iPhone|iPod/.test(navigator.userAgent) || 
+                             (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 0));
+      
+      if (!isMobileSafari) return;
+      
+      // Monitor visibility changes to detect screen lock/unlock
+      const handleVisibilityChange = async () => {
+        if (!document.hidden && state.audioPlayer?.audioContext) {
+          // Screen is visible again - try to resume audio context
+          const { audioContext } = state.audioPlayer;
+          
+          if (audioContext.state === 'suspended' || audioContext.state === 'interrupted') {
+            try {
+              await audioContext.resume();
+            } catch (e) {
+              // Try to reinitialize if resume fails
+              state.resumeAudioContext();
+            }
+          }
+        }
+      };
+      
+      // Monitor audio context state changes
+      const handleStateChange = async () => {
+        const audioContext = state.audioPlayer?.audioContext;
+        if (!audioContext) return;
+        
+        if (audioContext.state === 'suspended' && state.isPlaying) {
+          // Audio was suspended while playing - try to resume
+          try {
+            await audioContext.resume();
+          } catch (e) {
+            // Resume failed, mark as suspended but keep playing state
+            set({
+              audioPlayer: {
+                ...state.audioPlayer,
+                suspended: true
+              }
+            });
+          }
+        }
+      };
+      
+      // Add event listeners
+      document.addEventListener('visibilitychange', handleVisibilityChange);
+      
+      if (state.audioPlayer?.audioContext) {
+        state.audioPlayer.audioContext.addEventListener('statechange', handleStateChange);
+      }
+      
+      // Periodic audio context health check for mobile Safari
+      const healthCheckInterval = setInterval(async () => {
+        const currentState = get();
+        const audioContext = currentState.audioPlayer?.audioContext;
+        
+        if (!audioContext) return;
+        
+        // If we're supposed to be playing but context is suspended, try to resume
+        if (currentState.isPlaying && audioContext.state === 'suspended') {
+          try {
+            await audioContext.resume();
+          } catch (e) {
+            // Resume failed - try to reinitialize
+            currentState.resumeAudioContext();
+          }
+        }
+      }, 2000); // Check every 2 seconds
+      
+      // Store cleanup function
+      set({
+        mobileSafariCleanup: () => {
+          document.removeEventListener('visibilitychange', handleVisibilityChange);
+          if (state.audioPlayer?.audioContext) {
+            state.audioPlayer.audioContext.removeEventListener('statechange', handleStateChange);
+          }
+          clearInterval(healthCheckInterval);
+        }
+      });
+    },
+
+    // Audio control methods
+    playAudio: async ({ offset = 0, when = 0, audioIndex = 0 }) => {
+      const state = get();
+      
+      // Ensure AudioContext is running before playback (crucial for mobile Safari)
+      if (state.audioPlayer?.audioContext) {
+        const { audioContext } = state.audioPlayer;
+        
+        if (audioContext.state === 'suspended' || audioContext.state === 'interrupted') {
+          try {
+            await audioContext.resume();
+            // Give it time to resume
+            await new Promise(resolve => setTimeout(resolve, 50));
+          } catch (e) {
+            // Failed to resume AudioContext before playback
+            return;
+          }
+        }
+        
+        // Final check - if still not running, abort
+        if (audioContext.state !== 'running') {
+          // AudioContext not running, aborting playback
+          return;
+        }
+      }
       
       // Use AudioController for enhanced playback
       if (state.audioController) {
@@ -556,6 +717,10 @@ export const useGlobalStore = create((set, get) => {
           isPlaying: true,
           duration: audioBuffer.duration || 0,
         }));
+        
+        // Notify service worker about audio state
+        notifyServiceWorkerAudioState(true);
+        
         return;
       }
 
@@ -638,6 +803,9 @@ export const useGlobalStore = create((set, get) => {
         playbackOffset: offset,
         duration: audioBuffer.duration || 0,
       }));
+      
+      // Notify service worker about audio state
+      notifyServiceWorkerAudioState(true);
     },
 
     pauseAudio: ({ when = 0 }) => {
@@ -655,6 +823,10 @@ export const useGlobalStore = create((set, get) => {
           isPlaying: false,
           currentTime: currentPos 
         });
+        
+        // Notify service worker about audio state
+        notifyServiceWorkerAudioState(false);
+        
         return;
       }
 
@@ -679,6 +851,9 @@ export const useGlobalStore = create((set, get) => {
         isPlaying: false,
         currentTime: Math.min(currentPosition, state.duration)
       });
+      
+      // Notify service worker about audio state
+      notifyServiceWorkerAudioState(false);
     },
 
     // Track selection and management

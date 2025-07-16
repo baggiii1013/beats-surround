@@ -181,7 +181,7 @@ async function deleteObjectsWithPrefix(prefix) {
     const objects = await listObjectsWithPrefix(prefix);
     
     if (!objects || objects.length === 0) {
-      console.log(`No objects found with prefix "${prefix}"`);
+      // No objects found with prefix
       return { deletedCount: 0 };
     }
 
@@ -245,11 +245,11 @@ async function cleanupOrphanedRooms(activeRoomIds, performDeletion = false) {
     const roomObjects = await listObjectsWithPrefix('room-');
     
     if (!roomObjects || roomObjects.length === 0) {
-      console.log('No room objects found in R2');
+      // No room objects found in R2
       return result;
     }
 
-    console.log(`Found ${roomObjects.length} room objects in R2`);
+    // Found room objects in R2
 
     // Group objects by room
     const roomsInR2 = new Map();
@@ -266,8 +266,7 @@ async function cleanupOrphanedRooms(activeRoomIds, performDeletion = false) {
       }
     });
 
-    console.log(`Found ${roomsInR2.size} unique rooms in R2`);
-    console.log(`Found ${activeRoomIds.size} active rooms in server memory`);
+    // Found unique rooms in R2 and active rooms in server memory
 
     // Identify orphaned rooms
     const orphanedRooms = [];
@@ -313,7 +312,7 @@ async function cleanupOrphanedRooms(activeRoomIds, performDeletion = false) {
 
     return result;
   } catch (error) {
-    console.error('Orphaned room cleanup failed:', error);
+    // Orphaned room cleanup failed
     throw error;
   }
 }
