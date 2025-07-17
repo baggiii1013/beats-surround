@@ -32,8 +32,11 @@ export default function Player() {
   const toggleShuffle = useGlobalStore((state) => state.toggleShuffle);
   const resumeAudioContext = useGlobalStore((state) => state.resumeAudioContext);
   const audioPlayer = useGlobalStore((state) => state.audioPlayer);
+  const hasUserInteracted = useGlobalStore((state) => state.hasUserInteracted);
+  const isInitingAudioContext = useGlobalStore((state) => state.isInitingAudioContext);
+  const audioSourcesLoaded = useGlobalStore((state) => state.audioSourcesLoaded);
 
-  // Local state for sliders
+  // Local state for sliders and audio handling
   const [sliderPosition, setSliderPosition] = useState(0);
   const [trackDuration, setTrackDuration] = useState(0);
   const [isDragging, setIsDragging] = useState(false);
@@ -115,7 +118,7 @@ export default function Player() {
     } else {
       broadcastPlay(sliderPosition);
     }
-  }, [isPlaying, broadcastPause, broadcastPlay, sliderPosition]);
+  }, [isPlaying, broadcastPause, broadcastPlay, sliderPosition, resumeAudioContext]);
 
   const handleSkipBack = useCallback(() => {
     if (!isShuffled) {
@@ -154,13 +157,6 @@ export default function Player() {
   }, [handlePlay]);
 
   const selectedSource = audioSources.find(source => source.id === selectedAudioId);
-  
-  // Check if audio context is suspended
-  const isAudioSuspended = audioPlayer?.suspended || selectedSource?.requiresUserInteraction;
-
-  const handleEnableAudio = async () => {
-    await resumeAudioContext();
-  };
 
   // Volume control functions
   const updateVolume = useCallback((newVolume) => {
@@ -399,44 +395,26 @@ export default function Player() {
 
         {/* Bottom Section - All Controls */}
         <div className="flex-shrink-0 p-6 space-y-6">
-          {/* Track Information */}
-          <div className="text-center space-y-2">
-            <h1 className="text-3xl font-bold text-white leading-tight">
-              {selectedSource?.name || 'No track selected'}
-            </h1>
-            <p className="text-xl text-gray-400">
-              {selectedSource?.artist || 'Unknown Artist'}
-            </p>
-            {selectedSource?.album && (
-              <p className="text-base text-gray-500">
-                {selectedSource.album}
-                {selectedSource.year && ` • ${selectedSource.year}`}
+            {/* Track Information */}
+            <div className="text-center space-y-2">
+              <h1 className="text-3xl font-bold text-white leading-tight">
+                {selectedSource?.name || 'No track selected'}
+              </h1>
+              <p className="text-xl text-gray-400">
+                {selectedSource?.artist || 'Unknown Artist'}
               </p>
-            )}
-            {selectedSource?.genre && (
-              <p className="text-sm text-gray-600 uppercase tracking-wide">
-                {selectedSource.genre}
-              </p>
-            )}
-          </div>
-
-          {/* Autoplay Warning */}
-          {isAudioSuspended && (
-            <div className="bg-orange-900/30 border border-orange-500/30 rounded-xl p-4 backdrop-blur-sm">
-              <div className="text-center">
-                <p className="text-orange-400 text-sm font-semibold mb-1">Audio Blocked</p>
-                <p className="text-orange-300 text-xs mb-3">Your browser blocked audio autoplay</p>
-                <button
-                  onClick={handleEnableAudio}
-                  className="px-6 py-2 bg-orange-600 hover:bg-orange-700 text-white rounded-full text-sm font-medium transition-all hover:scale-105"
-                >
-                  Enable Audio
-                </button>
-              </div>
-            </div>
-          )}
-
-          {/* Progress Bar */}
+              {selectedSource?.album && (
+                <p className="text-base text-gray-500">
+                  {selectedSource.album}
+                  {selectedSource.year && ` • ${selectedSource.year}`}
+                </p>
+              )}
+              {selectedSource?.genre && (
+                <p className="text-sm text-gray-600 uppercase tracking-wide">
+                  {selectedSource.genre}
+                </p>
+              )}
+            </div>          {/* Progress Bar */}
           <div className="space-y-3">
             <div className="flex items-center gap-4">
               <span className="text-sm text-gray-400 font-mono w-12">
@@ -609,22 +587,6 @@ export default function Player() {
                 </p>
               )}
             </div>
-
-            {/* Desktop Autoplay warning */}
-            {isAudioSuspended && (
-              <div className="bg-orange-900/30 border border-orange-500/30 rounded-xl p-4 mb-6 backdrop-blur-sm">
-                <div className="text-center">
-                  <p className="text-orange-400 text-sm font-semibold mb-1">Audio Blocked</p>
-                  <p className="text-orange-300 text-xs mb-3">Your browser blocked audio autoplay</p>
-                  <button
-                    onClick={handleEnableAudio}
-                    className="px-6 py-2 bg-orange-600 hover:bg-orange-700 text-white rounded-full text-sm font-medium transition-all hover:scale-105"
-                  >
-                    Enable Audio
-                  </button>
-                </div>
-              </div>
-            )}
 
             {/* Desktop Main Controls */}
             <div className="flex items-center justify-center gap-8 mb-8">

@@ -18,7 +18,8 @@ export default function AudioStartButton({
   const initializeAudioContext = useGlobalStore((state) => state.initializeAudioContext);
 
   // Don't show button if audio context is already initialized and running
-  if (hasUserInteracted && audioPlayer?.audioContext?.state === 'running') {
+  const audioContextState = audioPlayer?.audioContext?.state;
+  if (audioContextState === 'running') {
     return null;
   }
 

@@ -6,6 +6,7 @@ import { useEffect } from 'react';
 import { useGlobalStore } from '../store/global';
 import { useRoomStore } from '../store/room';
 import ConnectionStatusIndicator from './ConnectionStatusIndicator';
+import LeaveRoomButton from './LeaveRoomButton';
 import SyncQualityIndicator from './SyncQualityIndicator';
 import { Badge } from './ui/badge';
 import { Button } from './ui/button';
@@ -121,14 +122,17 @@ export default function TopBar() {
       {/* Right side - Actions (Desktop only) */}
       <div className="hidden lg:flex items-center gap-2">
         {roomId && (
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={handleNewRoom}
-            className="text-sm"
-          >
-            New Room
-          </Button>
+          <>
+            <LeaveRoomButton />
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleNewRoom}
+              className="text-sm"
+            >
+              New Room
+            </Button>
+          </>
         )}
       </div>
     </div>

@@ -3,13 +3,14 @@
 import { useEffect, useRef } from 'react';
 import { toast } from 'sonner';
 import { WS_URL } from '../config/websocket';
+import { getCachedAudio, isCached } from '../lib/simpleAudioCache';
 import {
-  ClientActionTypes,
-  ScheduledActionTypes,
-  ServerActionTypes,
-  epochNow,
-  handleNTPResponse,
-  sendWSRequest
+    ClientActionTypes,
+    ScheduledActionTypes,
+    ServerActionTypes,
+    epochNow,
+    handleNTPResponse,
+    sendWSRequest
 } from '../lib/websocket';
 import { useGlobalStore } from '../store/global';
 import { useRoomStore } from '../store/room';
@@ -80,7 +81,13 @@ export default function WebSocketManager() {
       setSocket(ws);
       
       ws.onopen = () => {
-        toast.success('Connected to room');
+        const isReconnection = connectionStatus.reconnectCount > 0;
+        
+        if (isReconnection) {
+          toast.success('Successfully reconnected to room');
+        } else {
+          toast.success('Connected to room');
+        }
         
         // Update connection status
         setConnectionStatus({
@@ -417,19 +424,34 @@ export default function WebSocketManager() {
     try {
       const { audioId, audioName, audioBuffer } = message;
       
-      // Convert received audio buffer to proper format
-      const arrayBuffer = new Uint8Array(audioBuffer).buffer;
+      // Check if audio is already cached
+      const cached = await getCachedAudio(audioId);
+      let arrayBuffer;
+      
+      if (cached) {
+        // Use cached audio buffer
+        arrayBuffer = cached.arrayBuffer;
+        toast.success(`Loaded from cache: ${audioName}`);
+      } else {
+        // Convert received audio buffer to proper format
+        if (audioBuffer instanceof ArrayBuffer) {
+          arrayBuffer = audioBuffer;
+        } else {
+          // Convert from Uint8Array or other format
+          arrayBuffer = new Uint8Array(audioBuffer).buffer;
+        }
+        toast.success(`Received: ${audioName}`);
+      }
       
       const audioSource = {
         name: audioName,
         audioBuffer: arrayBuffer,
         id: audioId,
+        type: 'websocket-share'
       };
       
-      // Add to global store
+      // Add to global store (which will handle caching if not already cached)
       await addAudioSource(audioSource);
-      
-      toast.success(`New audio: ${audioName}`);
     } catch (error) {
       toast.error('Failed to load shared audio');
     }
@@ -439,19 +461,29 @@ export default function WebSocketManager() {
     try {
       const { audioSource } = message;
       
-      // For R2 sources, we need to fetch the audio data from the public URL
-      const response = await fetch(audioSource.url);
-      if (!response.ok) {
-        throw new Error('Failed to fetch audio from R2');
-      }
+      // Check if audio is already cached first
+      const cached = await getCachedAudio(audioSource.id);
+      let arrayBuffer;
       
-      const arrayBuffer = await response.arrayBuffer();
+      if (cached) {
+        // Use cached audio buffer - no need to fetch
+        arrayBuffer = cached.arrayBuffer;
+        toast.success(`Loaded from cache: ${audioSource.name}`);
+      } else {
+        // Fetch from R2 if not cached
+        const response = await fetch(audioSource.url);
+        if (!response.ok) {
+          throw new Error('Failed to fetch audio from R2');
+        }
+        arrayBuffer = await response.arrayBuffer();
+        toast.success(`Downloaded: ${audioSource.name}`);
+      }
       
       const newAudioSource = {
         name: audioSource.name,
         audioBuffer: arrayBuffer,
-        id: audioSource.id, // Use the R2 public URL as ID
-        url: audioSource.url, // Store the R2 URL
+        id: audioSource.id,
+        url: audioSource.url,
         type: 'r2-upload',
         uploadedAt: audioSource.uploadedAt,
         // Include metadata if available
@@ -465,10 +497,8 @@ export default function WebSocketManager() {
         ...(audioSource.metadata && { metadata: audioSource.metadata })
       };
       
-      // Add to global store
+      // Add to global store (which will handle caching if not already cached)
       await addAudioSource(newAudioSource);
-      
-      toast.success(`New audio uploaded: ${audioSource.name}`);
     } catch (error) {
       toast.error('Failed to load uploaded audio');
     }

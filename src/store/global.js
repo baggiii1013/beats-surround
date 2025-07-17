@@ -4,6 +4,7 @@ import { createPlaceholderCoverArt, extractAudioMetadata } from '../lib/audioMet
 import { createHighPrecisionTimer, getAudioController, getSyncEngine } from '../lib/audioSync';
 import { initializeMobileAudio, notifyServiceWorkerAudioState } from '../lib/mobileAudio';
 import { fetchDefaultAudioFiles } from '../lib/r2-api';
+import simpleCacheModule, { cacheAudio, getAllCachedAudio, getCachedAudio, isCached } from '../lib/simpleAudioCache';
 
 const MAX_NTP_MEASUREMENTS = 40;
 
@@ -111,17 +112,105 @@ const getWaitTimeSeconds = (state, targetServerTime) => {
   return waitTimeMilliseconds / 1000;
 };
 
-const loadAudioSourceUrl = async ({ url, audioContext, expectedTitle, expectedArtist }) => {
-  const response = await fetch(url);
+// Load audio source metadata without decoding (no AudioContext needed)
+
+const loadAudioSourceMetadata = async ({ url, expectedTitle, expectedArtist }) => {
+  // Create a unique ID for this URL-based audio source
+  const audioId = url;
   
-  if (!response.ok) {
-    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+  // Check if audio is already cached
+  const cached = await getCachedAudio(audioId);
+  let arrayBuffer;
+  let metadata;
+  
+  if (cached) {
+    // Use cached audio data
+    arrayBuffer = cached.arrayBuffer;
+    metadata = cached.metadata || {};
+  } else {
+    // Fetch from URL
+    const response = await fetch(url);
+    
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+    }
+    
+    arrayBuffer = await response.arrayBuffer();
+    
+    // Extract metadata (including cover art) before decoding audio
+    metadata = await extractAudioMetadata(arrayBuffer, url);
   }
   
-  const arrayBuffer = await response.arrayBuffer();
+  // Use expected values as fallback if metadata is missing or unclear
+  const finalTitle = metadata.title || expectedTitle || extractDefaultFileName(url);
+  const finalArtist = metadata.artist || expectedArtist || 'Unknown Artist';
   
-  // Extract metadata (including cover art) before decoding audio
-  const metadata = await extractAudioMetadata(arrayBuffer, url);
+  const audioSource = {
+    name: finalTitle,
+    artist: finalArtist,
+    album: metadata.album,
+    albumArtist: metadata.albumArtist,
+    year: metadata.year,
+    genre: metadata.genre,
+    coverArt: metadata.coverArt || createPlaceholderCoverArt(finalTitle, finalArtist),
+    estimatedDuration: metadata.duration, // Store estimated duration from metadata
+    rawAudioBuffer: arrayBuffer, // Store raw buffer for later decoding
+    audioBuffer: null, // Will be decoded when AudioContext is available
+    id: audioId,
+    url: url,
+    type: 'url-loaded',
+    metadata: metadata,
+    needsDecoding: true // Flag to indicate this needs decoding
+  };
+  
+  // Cache the audio if not already cached
+  if (!cached) {
+    const cacheMetadata = {
+      name: finalTitle,
+      artist: finalArtist,
+      album: metadata.album,
+      albumArtist: metadata.albumArtist,
+      year: metadata.year,
+      genre: metadata.genre,
+      duration: metadata.duration,
+      coverArt: audioSource.coverArt,
+      url: url,
+      type: 'url-loaded'
+    };
+    
+    // Cache asynchronously
+    cacheAudio(audioId, arrayBuffer, cacheMetadata).catch(() => {});
+  }
+  
+  return audioSource;
+};
+
+const loadAudioSourceUrl = async ({ url, audioContext, expectedTitle, expectedArtist }) => {
+  // Create a unique ID for this URL-based audio source
+  const audioId = url;
+  
+  // Check if audio is already cached
+  const cached = await getCachedAudio(audioId);
+  let arrayBuffer;
+  let metadata;
+  
+  if (cached) {
+    // Use cached audio data
+    arrayBuffer = cached.arrayBuffer;
+    metadata = cached.metadata || {};
+  } else {
+    // Fetch from URL
+    const response = await fetch(url);
+    
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+    }
+    
+    arrayBuffer = await response.arrayBuffer();
+    
+    // Extract metadata (including cover art) before decoding audio
+    metadata = await extractAudioMetadata(arrayBuffer, url);
+  }
   
   // Decode audio data
   const audioBuffer = await audioContext.decodeAudioData(arrayBuffer.slice());
@@ -130,7 +219,7 @@ const loadAudioSourceUrl = async ({ url, audioContext, expectedTitle, expectedAr
   const finalTitle = metadata.title || expectedTitle || extractDefaultFileName(url);
   const finalArtist = metadata.artist || expectedArtist || 'Unknown Artist';
   
-  return {
+  const audioSource = {
     name: finalTitle,
     artist: finalArtist,
     album: metadata.album,
@@ -140,9 +229,32 @@ const loadAudioSourceUrl = async ({ url, audioContext, expectedTitle, expectedAr
     coverArt: metadata.coverArt || createPlaceholderCoverArt(finalTitle, finalArtist),
     duration: audioBuffer.duration,
     audioBuffer,
-    id: url,
+    id: audioId,
+    url: url,
+    type: 'url-loaded',
     metadata: metadata
   };
+  
+  // Cache the audio if not already cached
+  if (!cached) {
+    const cacheMetadata = {
+      name: finalTitle,
+      artist: finalArtist,
+      album: metadata.album,
+      albumArtist: metadata.albumArtist,
+      year: metadata.year,
+      genre: metadata.genre,
+      duration: audioBuffer.duration,
+      coverArt: audioSource.coverArt,
+      url: url,
+      type: 'url-loaded'
+    };
+    
+    // Cache asynchronously
+    cacheAudio(audioId, arrayBuffer, cacheMetadata).catch(() => {});
+  }
+  
+  return audioSource;
 };
 
 const initializeAudioContext = () => {
@@ -229,33 +341,7 @@ const fetchDefaultAudioSources = async () => {
       }));
     }
     
-    // Fallback to local files if R2 is not available
-    // return [
-    //   { 
-    //     url: '/audio/Sia%20-%20Cheap%20Thrills%20(Performance%20Edit).flac',
-    //     expectedTitle: 'Cheap Thrills (Performance Edit)',
-    //     expectedArtist: 'Sia',
-    //     name: 'Cheap Thrills (Performance Edit)',
-    //     id: '/audio/Sia%20-%20Cheap%20Thrills%20(Performance%20Edit).flac',
-    //     type: 'local'
-    //   },
-    //   { 
-    //     url: '/audio/Cheap%20Thrills%20feat%20Sean%20Paul%20-%20Sia%20Sean%20Paul%20.flac',
-    //     expectedTitle: 'Cheap Thrills (feat. Sean Paul)',
-    //     expectedArtist: 'Sia, Sean Paul',
-    //     name: 'Cheap Thrills (feat. Sean Paul)',
-    //     id: '/audio/Cheap%20Thrills%20feat%20Sean%20Paul%20-%20Sia%20Sean%20Paul%20.flac',
-    //     type: 'local'
-    //   },
-    //   { 
-    //     url: '/audio/Sunflower%20-%20Spider-Man%20Into%20the%20Spider-Verse%20-%20Post%20Malone%20Swae%20Lee%20.flac',
-    //     expectedTitle: 'Sunflower - Spider-Man: Into the Spider-Verse',
-    //     expectedArtist: 'Post Malone, Swae Lee',
-    //     name: 'Sunflower - Spider-Man: Into the Spider-Verse',
-    //     id: '/audio/Sunflower%20-%20Spider-Man%20Into%20the%20Spider-Verse%20-%20Post%20Malone%20Swae%20Lee%20.flac',
-    //     type: 'local'
-    //   },
-    // ];
+    return [];
   } catch (error) {
     // Return empty array on error
     return [];
@@ -301,6 +387,51 @@ export const useGlobalStore = create((set, get) => {
   // Safety timeout to reset stuck initialization flags
   let initTimeoutId = null;
   
+  // Decode any audio sources that are pending decoding
+  const decodePendingAudioSources = async () => {
+    const state = get();
+    const { audioSources, audioPlayer } = state;
+    
+    if (!audioPlayer?.audioContext) {
+      return;
+    }
+    
+    const sourcesToUpdate = [];
+    
+    // Find sources that need decoding
+    for (const source of audioSources) {
+      if (source.needsDecoding && source.rawAudioBuffer && !source.audioBuffer) {
+        try {
+          const audioBuffer = await audioPlayer.audioContext.decodeAudioData(source.rawAudioBuffer.slice());
+          sourcesToUpdate.push({
+            ...source,
+            audioBuffer,
+            duration: audioBuffer.duration,
+            needsDecoding: false,
+            rawAudioBuffer: undefined // Remove raw buffer to save memory
+          });
+        } catch (error) {
+          // Keep the source as-is if decoding fails
+          sourcesToUpdate.push(source);
+        }
+      } else {
+        // Keep source as-is
+        sourcesToUpdate.push(source);
+      }
+    }
+    
+    // Update state with decoded sources
+    if (sourcesToUpdate.length > 0) {
+      set({ audioSources: sourcesToUpdate });
+      
+      // Update duration if the selected source was decoded
+      const selectedSource = sourcesToUpdate.find(s => s.id === state.selectedAudioId);
+      if (selectedSource?.audioBuffer) {
+        set({ duration: selectedSource.audioBuffer.duration });
+      }
+    }
+  };
+  
   // Reset function for stuck initialization
   const resetInitializationFlags = () => {
     sourceLoadingInProgress = false;
@@ -315,7 +446,7 @@ export const useGlobalStore = create((set, get) => {
     }
   };
   
-  // Function to load audio sources without initializing audio context
+  // Function to load audio sources without decoding (no AudioContext needed)
   const loadAudioSources = async () => {
     if (sourceLoadingInProgress) {
       return;
@@ -328,14 +459,11 @@ export const useGlobalStore = create((set, get) => {
       const demoAudioList = await fetchDefaultAudioSources();
       const loadedSources = [];
       
-      // Create a temporary audio context just for decoding audio data
-      const tempAudioContext = new (window.AudioContext || window.webkitAudioContext)();
-      
+      // Load audio metadata and raw buffers from demo/default sources without decoding
       for (const audioInfo of demoAudioList) {
         try {
-          const audioSource = await loadAudioSourceUrl({ 
+          const audioSource = await loadAudioSourceMetadata({ 
             url: audioInfo.url, 
-            audioContext: tempAudioContext,
             expectedTitle: audioInfo.expectedTitle || audioInfo.name,
             expectedArtist: audioInfo.expectedArtist || 'Unknown Artist'
           });
@@ -347,8 +475,48 @@ export const useGlobalStore = create((set, get) => {
         }
       }
       
-      // Close the temporary audio context
-      tempAudioContext.close();
+      // Load cached user-uploaded audio files (restore them on page refresh)
+      try {
+        const cachedAudioList = await getAllCachedAudio();
+        
+        for (const cachedAudio of cachedAudioList) {
+          // Skip demo sources that are already loaded and files without upload timestamp
+          if ((cachedAudio.type === 'r2-default' || cachedAudio.type === 'local') || !cachedAudio.uploadedAt) {
+            continue;
+          }
+          
+          try {
+            const cached = await getCachedAudio(cachedAudio.id);
+            if (cached && cached.arrayBuffer) {
+              const audioSource = {
+                id: cachedAudio.id,
+                name: cachedAudio.name,
+                artist: cachedAudio.artist || 'Unknown Artist',
+                album: cachedAudio.album,
+                albumArtist: cachedAudio.albumArtist,
+                year: cachedAudio.year,
+                genre: cachedAudio.genre,
+                coverArt: cachedAudio.coverArt,
+                estimatedDuration: cachedAudio.duration,
+                rawAudioBuffer: cached.arrayBuffer,
+                audioBuffer: null, // Will be decoded when AudioContext is available
+                url: cachedAudio.url,
+                type: cachedAudio.type || 'user-upload',
+                metadata: cached.metadata,
+                needsDecoding: true,
+                uploadedAt: cachedAudio.uploadedAt,
+                cachedAt: cachedAudio.cachedAt
+              };
+              
+              loadedSources.push(audioSource);
+            }
+          } catch (cacheError) {
+            // Continue if caching fails
+          }
+        }
+      } catch (cacheLoadError) {
+        // Continue without cached files
+      }
       
       if (loadedSources.length === 0) {
         set({
@@ -359,13 +527,32 @@ export const useGlobalStore = create((set, get) => {
         return;
       }
       
+      // Sort sources: demo files first, then user uploads by upload time (newest first)
+      loadedSources.sort((a, b) => {
+        // Demo files first
+        if ((a.type === 'r2-default' || a.type === 'local') && !(b.type === 'r2-default' || b.type === 'local')) {
+          return -1;
+        }
+        if (!(a.type === 'r2-default' || a.type === 'local') && (b.type === 'r2-default' || b.type === 'local')) {
+          return 1;
+        }
+        
+        // For user uploads, sort by upload time (newest first)
+        if (a.uploadedAt && b.uploadedAt) {
+          return b.uploadedAt - a.uploadedAt;
+        }
+        
+        // If no upload time, sort by name
+        return (a.name || '').localeCompare(b.name || '');
+      });
+      
       const firstSource = loadedSources[0];
       
       set({
         audioSources: loadedSources,
         audioSourcesLoaded: true,
         selectedAudioId: firstSource.id,
-        duration: firstSource.audioBuffer?.duration || 0,
+        duration: firstSource.estimatedDuration || 0, // Use estimated duration from metadata
         isLoadingSources: false
       });
       
@@ -443,23 +630,37 @@ export const useGlobalStore = create((set, get) => {
           sourceNode,
           gainNode,
           suspended: audioContext.state === 'suspended',
-          syncEngine: getSyncEngine(),        audioController: getAudioController(audioContext)
-      },
-      isInitingAudioContext: false,
-      hasUserInteracted: true // Mark that user has interacted
-    });
+          syncEngine: getSyncEngine(),
+          audioController: getAudioController(audioContext)
+        },
+        isInitingAudioContext: false,
+        hasUserInteracted: true // Mark that user has interacted
+      });
+      
+      // Update suspended state after potential resume
+      if (audioContext.state === 'running') {
+        set((state) => ({
+          audioPlayer: {
+            ...state.audioPlayer,
+            suspended: false
+          }
+        }));
+      }
+      
+      // Decode any pending audio sources that need decoding
+      await decodePendingAudioSources();
+      
+      // Start mobile Safari monitoring for background playback
+      get().startMobileSafariMonitor();
+      
+      // Initialize mobile audio features (Media Session API, wake lock, service worker)
+      try {
+        await initializeMobileAudio(get);
+      } catch (mobileError) {
+        // Mobile audio initialization failed - continue without mobile features
+      }
     
-    // Start mobile Safari monitoring for background playback
-    get().startMobileSafariMonitor();
-    
-    // Initialize mobile audio features (Media Session API, wake lock, service worker)
-    try {
-      await initializeMobileAudio(get);
-    } catch (mobileError) {
-      // Mobile audio initialization failed - continue without mobile features
-    }
-    
-    return true;
+      return true;
       
     } catch (error) {
       set({ 
@@ -508,7 +709,13 @@ export const useGlobalStore = create((set, get) => {
       const state = get();
       
       if (!state.audioPlayer?.audioContext) {
-        return false;
+        // If no audio context exists, try to initialize it
+        try {
+          const success = await get().initializeAudioContext();
+          return success;
+        } catch (error) {
+          return false;
+        }
       }
       
       const { audioContext } = state.audioPlayer;
@@ -1018,15 +1225,69 @@ export const useGlobalStore = create((set, get) => {
     // Audio source management
     addAudioSource: async (source) => {
       const state = get();
-      const { audioContext } = state.audioPlayer || { audioContext: new (window.AudioContext || window.webkitAudioContext)() };
-
+      
       try {
-        const audioBuffer = await audioContext.decodeAudioData(source.audioBuffer);
+        // Handle audio decoding
+        let audioBuffer;
+        let audioBufferForCache = source.audioBuffer;
+        
+        if (source.audioBuffer instanceof AudioBuffer) {
+          // Already decoded
+          audioBuffer = source.audioBuffer;
+        } else if (source.needsDecoding && source.rawAudioBuffer) {
+          // This source needs decoding and we have the raw buffer
+          if (state.audioPlayer?.audioContext) {
+            // We have an AudioContext, decode now
+            audioBuffer = await state.audioPlayer.audioContext.decodeAudioData(source.rawAudioBuffer.slice());
+            audioBufferForCache = source.rawAudioBuffer;
+          } else {
+            // No AudioContext yet, keep as-is and decode later
+            audioBuffer = null;
+            audioBufferForCache = source.rawAudioBuffer;
+          }
+        } else {
+          // Need to decode the provided buffer
+          if (!state.audioPlayer?.audioContext) {
+            throw new Error('AudioContext not available for decoding audio');
+          }
+          audioBuffer = await state.audioPlayer.audioContext.decodeAudioData(source.audioBuffer);
+        }
+        
+        // Determine if this is a user upload and add timestamp if needed
+        const isUserUpload = source.type && 
+          source.type !== 'r2-default' && 
+          source.type !== 'local' && 
+          source.type !== 'url-loaded';
+        
+        const uploadedAt = source.uploadedAt || (isUserUpload ? Date.now() : undefined);
+        
+        // Cache the audio data for future use if not already cached
+        const isAlreadyCached = await isCached(source.id);
+        if (!isAlreadyCached && audioBufferForCache) {
+          const metadata = {
+            name: source.name,
+            artist: source.artist,
+            album: source.album,
+            albumArtist: source.albumArtist,
+            year: source.year,
+            genre: source.genre,
+            duration: audioBuffer?.duration || source.estimatedDuration,
+            coverArt: source.coverArt,
+            url: source.url,
+            type: source.type,
+            uploadedAt: uploadedAt
+          };
+          
+          // Cache asynchronously - don't block the UI
+          cacheAudio(source.id, audioBufferForCache, metadata).catch(() => {});
+        }
         
         const newAudioSource = {
           name: source.name,
           audioBuffer,
           id: source.id,
+          // Store raw buffer for later decoding if needed
+          ...(source.rawAudioBuffer && !audioBuffer && { rawAudioBuffer: source.rawAudioBuffer, needsDecoding: true }),
           // Preserve metadata if available
           ...(source.artist && { artist: source.artist }),
           ...(source.album && { album: source.album }),
@@ -1035,17 +1296,23 @@ export const useGlobalStore = create((set, get) => {
           ...(source.genre && { genre: source.genre }),
           ...(source.coverArt && { coverArt: source.coverArt }),
           ...(source.metadata && { metadata: source.metadata }),
+          ...(source.url && { url: source.url }),
+          ...(source.type && { type: source.type }),
+          ...(uploadedAt && { uploadedAt: uploadedAt }),
+          ...(source.estimatedDuration && { estimatedDuration: source.estimatedDuration }),
         };
 
         set((state) => ({
           audioSources: [...state.audioSources, newAudioSource],
-          ...(source.id === state.selectedAudioId ? { duration: audioBuffer.duration } : {}),
+          ...(source.id === state.selectedAudioId ? { 
+            duration: audioBuffer?.duration || source.estimatedDuration || 0 
+          } : {}),
         }));
 
         state.markAudioAsDownloaded(source.id);
         state.addToUploadHistory(source.name, source.id);
       } catch (error) {
-        // Failed to decode audio data
+        // Silently handle errors
       }
     },
 
@@ -1322,8 +1589,47 @@ export const useGlobalStore = create((set, get) => {
       set({ isSpatialAudioEnabled: false });
     },
 
+    // Audio cache management
+    clearAudioCache: async () => {
+      try {
+        const cache = simpleCacheModule.instance;
+        if (cache) {
+          await cache.clearAll();
+          toast.success('Audio cache cleared');
+        }
+      } catch (error) {
+        toast.error('Failed to clear cache');
+      }
+    },
+
+    clearExpiredCache: async () => {
+      try {
+        const cache = simpleCacheModule.instance;
+        if (cache) {
+          const removedCount = await cache.clearExpired();
+          if (removedCount > 0) {
+            toast.success(`Removed ${removedCount} expired cache entries`);
+          }
+        }
+      } catch (error) {
+        // Silently handle errors
+      }
+    },
+
+    getCacheStats: async () => {
+      try {
+        const cache = simpleCacheModule.instance;
+        if (cache) {
+          return await cache.getCacheStats();
+        }
+        return { count: 0, totalSize: 0 };
+      } catch (error) {
+        return { count: 0, totalSize: 0 };
+      }
+    },
+
     // Reset function
-    resetStore: () => {
+    resetStore: async () => {
       const state = get();
 
       // Stop any playing audio and clean up audio player
@@ -1347,6 +1653,16 @@ export const useGlobalStore = create((set, get) => {
       // Close WebSocket connection
       if (state.socket && state.socket.readyState === WebSocket.OPEN) {
         state.socket.close();
+      }
+
+      // Clear audio cache when leaving room
+      try {
+        const cache = simpleCacheModule.instance;
+        if (cache) {
+          await cache.clearAll();
+        }
+      } catch (error) {
+        // Silently handle cache clearing errors
       }
 
       // Reset to initial state but keep room-specific settings
@@ -1429,7 +1745,6 @@ export const useGlobalStore = create((set, get) => {
       return state.audioPlayer.gainNode.gain.value;
     },
 
-    // Reset initialization flags (for debugging/recovery)
     resetInitializationFlags,
   };
 });

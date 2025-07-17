@@ -8,8 +8,8 @@ class RoomCleanupManager {
   constructor() {
     // Configuration with different grace periods for different scenarios
     this.config = {
-      // Grace period before cleanup starts (milliseconds)
-      CLEANUP_GRACE_PERIOD: parseInt(process.env.ROOM_CLEANUP_GRACE_PERIOD) || 5 * 60 * 1000, // 5 minutes default
+      // Extended grace period to handle page refreshes and network issues
+      CLEANUP_GRACE_PERIOD: parseInt(process.env.ROOM_CLEANUP_GRACE_PERIOD) || 10 * 60 * 1000, // 10 minutes default (increased from 5)
       
       // Grace period for emergency cleanup (server shutdown)
       EMERGENCY_CLEANUP_GRACE_PERIOD: 30 * 1000, // 30 seconds
@@ -26,10 +26,16 @@ class RoomCleanupManager {
       // Retry configuration
       MAX_CLEANUP_RETRIES: 3,
       RETRY_DELAY_BASE: 1000, // 1 second base delay
+      
+      // Page refresh grace period - longer grace for potential page refreshes
+      PAGE_REFRESH_GRACE_PERIOD: parseInt(process.env.PAGE_REFRESH_GRACE_PERIOD) || 3 * 60 * 1000, // 3 minutes
     };
     
     // Active cleanup timers (roomId -> timer)
     this.cleanupTimers = new Map();
+    
+    // Room last activity tracking for intelligent cleanup
+    this.roomLastActivity = new Map();
     
     // Active cleanup operations (roomId -> promise)
     this.activeCleanups = new Map();
@@ -41,7 +47,8 @@ class RoomCleanupManager {
       failedCleanups: 0,
       filesDeleted: 0,
       orphanedRoomsFound: 0,
-      lastOrphanCheck: null
+      lastOrphanCheck: null,
+      pageRefreshReconnections: 0
     };
     
     // Start periodic orphan cleanup if enabled
@@ -99,9 +106,70 @@ class RoomCleanupManager {
     if (timer) {
       clearTimeout(timer);
       this.cleanupTimers.delete(roomId);
+      
+      // Track page refresh reconnections if this was recent
+      const lastActivity = this.roomLastActivity.get(roomId);
+      if (lastActivity && Date.now() - lastActivity < this.config.PAGE_REFRESH_GRACE_PERIOD) {
+        this.stats.pageRefreshReconnections++;
+      }
+      
       return true;
     }
     return false;
+  }
+
+  /**
+   * Track room activity for intelligent cleanup decisions
+   */
+  trackRoomActivity(roomId) {
+    this.roomLastActivity.set(roomId, Date.now());
+  }
+
+  /**
+   * Get time since last room activity
+   */
+  getTimeSinceLastActivity(roomId) {
+    const lastActivity = this.roomLastActivity.get(roomId);
+    return lastActivity ? Date.now() - lastActivity : Infinity;
+  }
+
+  /**
+   * Schedule room cleanup with intelligent timing based on activity
+   */
+  scheduleRoomCleanup(roomId, rooms, options = {}) {
+    const { isEmergency = false, force = false } = options;
+    
+    // Track that room became empty
+    this.trackRoomActivity(roomId);
+    
+    // Cancel any existing cleanup timer
+    this.cancelRoomCleanup(roomId);
+    
+    const timeSinceActivity = this.getTimeSinceLastActivity(roomId);
+    
+    // Determine appropriate grace period
+    let gracePeriod;
+    if (isEmergency) {
+      gracePeriod = this.config.EMERGENCY_CLEANUP_GRACE_PERIOD;
+    } else if (timeSinceActivity < this.config.PAGE_REFRESH_GRACE_PERIOD) {
+      // Recent activity suggests possible page refresh - use longer grace period
+      gracePeriod = this.config.CLEANUP_GRACE_PERIOD;
+    } else {
+      gracePeriod = this.config.CLEANUP_GRACE_PERIOD;
+    }
+    
+    const timer = setTimeout(async () => {
+      try {
+        await this.executeRoomCleanup(roomId, rooms, isEmergency);
+      } catch (error) {
+        console.error(`Failed to cleanup room ${roomId}:`, error);
+      } finally {
+        this.cleanupTimers.delete(roomId);
+        this.roomLastActivity.delete(roomId);
+      }
+    }, gracePeriod);
+    
+    this.cleanupTimers.set(roomId, timer);
   }
 
   /**

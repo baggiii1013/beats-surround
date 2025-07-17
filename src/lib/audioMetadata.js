@@ -20,12 +20,18 @@ export async function extractAudioMetadata(arrayBuffer, url) {
     
     const { common, format } = metadata;
     
-    // Extract cover art
+    // Extract cover art and convert to data URL for caching
     let coverArt = null;
     if (common.picture && common.picture.length > 0) {
       const picture = common.picture[0];
-      const blob = new Blob([picture.data], { type: picture.format });
-      coverArt = URL.createObjectURL(blob);
+      try {
+        // Convert to base64 data URL instead of blob URL for better caching
+        const base64 = btoa(String.fromCharCode(...picture.data));
+        coverArt = `data:${picture.format};base64,${base64}`;
+      } catch (error) {
+        // If base64 conversion fails, fall back to no cover art
+        coverArt = null;
+      }
     }
     
     // Extract song information

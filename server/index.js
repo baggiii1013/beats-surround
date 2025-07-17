@@ -178,6 +178,9 @@ class Room {
   async addClient(clientId, client) {
     this.clients.set(clientId, client);
     
+    // Track room activity for intelligent cleanup
+    cleanupManager.trackRoomActivity(this.id);
+    
     // Cancel any pending cleanup since we have a client
     cleanupManager.cancelRoomCleanup(this.id);
     
@@ -205,7 +208,7 @@ class Room {
     
     // Clean up room if empty, but with a delay to allow reconnections
     if (this.clients.size === 0) {
-      // Use the enhanced cleanup manager instead of basic timeout
+      // Use the enhanced cleanup manager with intelligent timing
       cleanupManager.scheduleRoomCleanup(this.id, rooms);
     } else {
       // Cancel any pending cleanup since we still have clients

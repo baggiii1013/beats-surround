@@ -98,15 +98,18 @@ export default function AudioInitializer() {
     
     // Show start button if:
     // 1. Audio sources are loaded
-    // 2. User hasn't interacted yet OR AudioContext is suspended
+    // 2. Audio context is not running (either doesn't exist, is suspended, or closed)
     // 3. We're not currently initializing
     
-    const needsUserInteraction = !hasUserInteracted || 
-      (audioPlayer?.audioContext?.state === 'suspended');
+    const audioContextState = audioPlayer?.audioContext?.state;
+    const needsAudioActivation = !audioPlayer?.audioContext || 
+      audioContextState === 'suspended' || 
+      audioContextState === 'closed';
     
     const shouldShowButton = audioSourcesLoaded && 
-      needsUserInteraction && 
-      !isInitingAudioContext;
+      needsAudioActivation && 
+      !isInitingAudioContext &&
+      !isStarting; // Also check isStarting to prevent button from reappearing during initialization
     
     setShowStartButton(shouldShowButton);
     
@@ -118,9 +121,9 @@ export default function AudioInitializer() {
   }, [
     mounted, 
     audioSourcesLoaded, 
-    hasUserInteracted, 
     audioPlayer?.audioContext?.state,
     isInitingAudioContext,
+    isStarting, // Add this dependency
     error
   ]);
 
@@ -137,6 +140,8 @@ export default function AudioInitializer() {
         const resumed = await resumeAudioContext();
         
         if (resumed) {
+          // Give the global state time to update before hiding the button
+          await new Promise(resolve => setTimeout(resolve, 100));
           setShowStartButton(false);
           return;
         }
@@ -146,6 +151,11 @@ export default function AudioInitializer() {
       const success = await initializeAudioContext();
       
       if (success) {
+        // Mark as user interacted to prevent future prompts
+        useGlobalStore.setState({ hasUserInteracted: true });
+        
+        // Give the global state time to update before hiding the button
+        await new Promise(resolve => setTimeout(resolve, 100));
         setShowStartButton(false);
       } else {
         throw new Error('Failed to initialize audio context');
