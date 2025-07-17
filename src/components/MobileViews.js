@@ -4,6 +4,7 @@ import { motion } from 'framer-motion';
 import { Clock, Users, Volume2, Wifi } from 'lucide-react';
 import { useGlobalStore } from '../store/global';
 import { useRoomStore } from '../store/room';
+import AudioCacheStatus from './AudioCacheStatus';
 import AudioUploader from './AudioUploader';
 import ConnectionStatusIndicator from './ConnectionStatusIndicator';
 import Player from './Player';
@@ -27,59 +28,54 @@ function MobileRoomInfoCard() {
 
   return (
     <div className="space-y-4">
-      {/* Room Header */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <div className="p-2 rounded-full bg-blue-500/20 border border-blue-500/30">
-            <Wifi className="w-5 h-5 text-blue-400" />
+      {/* Room Header - Simplified for mobile */}
+      <div className="glass rounded-xl p-4 border border-border">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="p-2 rounded-xl bg-gradient-primary shadow-lg">
+              <Wifi className="w-5 h-5 text-white" />
+            </div>
+            <div>
+              <h3 className="text-lg font-bold text-white">Room {roomId}</h3>
+              <p className="text-sm text-muted-foreground">{username}</p>
+            </div>
           </div>
-          <div>
-            <h3 className="text-xl font-semibold text-white">Room {roomId}</h3>
-            <p className="text-sm text-gray-400">{username}</p>
-          </div>
-        </div>
-        
-        <div className="flex items-center gap-2">
-          <Users className="w-4 h-4 text-gray-400" />
-          <Badge variant="outline" className="text-sm font-medium">
+          
+          <Badge variant="glow" className="text-sm font-semibold">
             {connectedClients.length} online
           </Badge>
         </div>
       </div>
 
-      {/* Quick Stats */}
-      <div className="grid grid-cols-3 gap-3">
-        <div className="bg-neutral-800/50 rounded-xl p-3 text-center">
-          <p className="text-2xl font-bold text-white">{audioSources.length}</p>
-          <p className="text-xs text-gray-400 uppercase tracking-wide">Tracks</p>
+      {/* Quick Stats - Simplified */}
+      <div className="grid grid-cols-2 gap-3">
+        <div className="glass rounded-xl p-4 text-center border border-border">
+          <p className="text-2xl font-bold bg-gradient-to-r from-white to-accent bg-clip-text text-transparent">{audioSources.length}</p>
+          <p className="text-xs text-muted-foreground uppercase tracking-wide">Tracks</p>
         </div>
-        <div className="bg-neutral-800/50 rounded-xl p-3 text-center">
+        <div className="glass rounded-xl p-4 text-center border border-border">
           <ConnectionStatusIndicator showDetails={false} className="justify-center" />
-          <p className="text-xs text-gray-400 uppercase tracking-wide mt-1">Connection</p>
-        </div>
-        <div className="bg-neutral-800/50 rounded-xl p-3 text-center">
-          <SyncQualityIndicator showDetails={false} className="justify-center" />
-          <p className="text-xs text-gray-400 uppercase tracking-wide mt-1">Sync</p>
+          <p className="text-xs text-muted-foreground uppercase tracking-wide mt-1">Status</p>
         </div>
       </div>
 
       {/* Current Track */}
       {currentTrack && (
-        <div className="bg-neutral-800/30 rounded-xl p-3">
-          <div className="flex items-center gap-2 mb-2">
-            <Volume2 className="w-4 h-4 text-green-400" />
-            <span className="text-sm text-gray-400">Now Selected</span>
+        <div className="glass rounded-xl p-4 border border-border">
+          <div className="flex items-center gap-2 mb-3">
+            <Volume2 className="w-4 h-4 text-accent" />
+            <span className="text-sm text-muted-foreground">Now Selected</span>
             {isPlaying && (
-              <Badge className="text-xs bg-green-500/20 text-green-300 border-green-500/30">
+              <Badge variant="success" className="text-xs">
                 Playing
               </Badge>
             )}
           </div>
-          <p className="text-sm font-medium text-white truncate">
+          <p className="text-sm font-semibold text-white truncate mb-1">
             {currentTrack.metadata?.title || currentTrack.name}
           </p>
           {currentTrack.metadata?.artist && (
-            <p className="text-xs text-gray-400 truncate">
+            <p className="text-xs text-muted-foreground truncate">
               {currentTrack.metadata.artist}
             </p>
           )}
@@ -147,6 +143,16 @@ export function MobileRoomView() {
             <h3 className="text-lg font-semibold text-white">Connected Users</h3>
           </div>
           <UserGrid />
+        </motion.div>
+
+        {/* Cache Status - Mobile/Tablet only */}
+        <motion.div 
+          initial={{ opacity: 0, scale: 0.95 }}
+          animate={{ opacity: 1, scale: 1 }}
+          transition={{ duration: 0.3, delay: 0.4 }}
+          className="lg:hidden"
+        >
+          <AudioCacheStatus />
         </motion.div>
       </div>
     </motion.div>
@@ -217,6 +223,13 @@ export function TabletRoomView() {
           >
             <RoomInfo />
             <RoomJoiner />
+            <motion.div
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.3, delay: 0.3 }}
+            >
+              <AudioCacheStatus />
+            </motion.div>
           </motion.div>
           
           <motion.div

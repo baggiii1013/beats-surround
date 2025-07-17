@@ -4,6 +4,7 @@ import { Clock, Users, Volume2, Wifi } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { useGlobalStore } from '../store/global';
 import { useRoomStore } from '../store/room';
+import AudioCacheStatus from './AudioCacheStatus';
 import ConnectionStatusIndicator from './ConnectionStatusIndicator';
 import SyncQualityIndicator from './SyncQualityIndicator';
 import { Badge } from './ui/badge';
@@ -144,6 +145,11 @@ const RoomInfo = ({ className = '' }) => {
         {/* Detailed Connection Metrics */}
         <div className="border-t border-gray-800 pt-3">
           <ConnectionStatusIndicator showDetails={true} className="text-xs" />
+        </div>
+
+        {/* Audio Cache Status */}
+        <div className="border-t border-gray-800 pt-3">
+          <AudioCacheStatus />
         </div>
       </div>
     </Card>

@@ -1,19 +1,19 @@
 "use client";
 
 import {
-    AnimatePresence,
-    motion,
-    useMotionValue,
-    useSpring,
-    useTransform,
+  AnimatePresence,
+  motion,
+  useMotionValue,
+  useSpring,
+  useTransform,
 } from "framer-motion";
 import {
-    Children,
-    cloneElement,
-    useEffect,
-    useMemo,
-    useRef,
-    useState,
+  Children,
+  cloneElement,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
 } from "react";
 
 function DockItem({
@@ -53,6 +53,20 @@ function DockItem({
   const handleTouchEnd = () => {
     setIsPressed(false);
     isHovered.set(0);
+    // Reset mouse distance to ensure proper size reset on mobile
+    setTimeout(() => {
+      isHovered.set(0);
+    }, 50);
+  };
+
+  const handleClick = (e) => {
+    // Ensure the icon returns to normal size after click on mobile
+    setTimeout(() => {
+      isHovered.set(0);
+    }, 100);
+    if (onClick) {
+      onClick(e);
+    }
   };
 
   return (
@@ -68,7 +82,8 @@ function DockItem({
       onBlur={() => isHovered.set(0)}
       onTouchStart={handleTouchStart}
       onTouchEnd={handleTouchEnd}
-      onClick={onClick}
+      onTouchCancel={handleTouchEnd}
+      onClick={handleClick}
       className={`relative inline-flex items-center justify-center rounded-full bg-[#060010] border-neutral-700 border-2 shadow-md cursor-pointer select-none ${isPressed ? 'scale-95' : ''} transition-transform duration-150 ${className}`}
       tabIndex={0}
       role="button"
@@ -164,6 +179,10 @@ export default function Dock({
           mouseX.set(Infinity);
         }}
         onTouchEnd={() => {
+          isHovered.set(0);
+          mouseX.set(Infinity);
+        }}
+        onTouchCancel={() => {
           isHovered.set(0);
           mouseX.set(Infinity);
         }}

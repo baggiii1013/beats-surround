@@ -1,7 +1,7 @@
 'use client';
 
 import { motion } from 'framer-motion';
-import { Users, Volume2, Wifi } from 'lucide-react';
+import { Plus, Users, Volume2, Wifi } from 'lucide-react';
 import { useEffect } from 'react';
 import { useGlobalStore } from '../store/global';
 import { useRoomStore } from '../store/room';
@@ -40,99 +40,124 @@ export default function TopBar() {
   };
 
   return (
-    <div className="h-16 bg-black/80 backdrop-blur-md border-b border-gray-800 flex items-center justify-between px-4 lg:px-6">
+    <div className="h-20 glass-strong border-b border-border/50 flex items-center justify-between px-4 lg:px-8 relative z-20 backdrop-blur-xl">
       {/* Left side - Logo */}
       <div className="flex items-center gap-2 lg:gap-4">
         <motion.div
           initial={{ opacity: 0, x: -20 }}
           animate={{ opacity: 1, x: 0 }}
-          className="flex items-center gap-2"
+          className="flex items-center gap-3"
         >
-          <div className="w-8 h-8 bg-gradient-to-br from-blue-500 to-purple-600 rounded-lg flex items-center justify-center">
-            <Volume2 className="w-5 h-5 text-white" />
+          <motion.div 
+            className="w-10 h-10 bg-gradient-primary rounded-xl flex items-center justify-center shadow-lg"
+            whileHover={{ scale: 1.05, rotate: 5 }}
+            whileTap={{ scale: 0.95 }}
+          >
+            <Volume2 className="w-6 h-6 text-white" />
+          </motion.div>
+          <div className="flex flex-col">
+            <h1 className="text-lg lg:text-2xl font-bold bg-gradient-to-r from-white via-accent to-primary bg-clip-text text-transparent">
+              BeatsSurround
+            </h1>
+            <p className="text-xs text-muted-foreground hidden lg:block">
+              Sync your beats, amplify the vibe
+            </p>
           </div>
-          <h1 className="text-lg lg:text-xl font-bold text-white">BeatsSurround</h1>
         </motion.div>
         
-        {/* Connection and Sync indicators */}
-        <div className="hidden sm:flex items-center gap-3">
-          <ConnectionStatusIndicator />
-          <SyncQualityIndicator className="text-sm" />
-        </div>
-        
-        {/* Mobile connection indicator */}
-        <div className="flex sm:hidden">
-          <ConnectionStatusIndicator showDetails={false} />
+        {/* Connection indicators - Desktop only */}
+        <div className="hidden lg:flex items-center gap-3 ml-4">
+          <div className="glass rounded-lg px-3 py-1.5 border border-border">
+            <ConnectionStatusIndicator />
+          </div>
+          <div className="glass rounded-lg px-3 py-1.5 border border-border">
+            <SyncQualityIndicator className="text-sm" />
+          </div>
         </div>
       </div>
 
       {/* Center - Room info and detailed connection status (Desktop only) */}
       {roomId && (
-        <div className="hidden lg:flex items-center gap-4">
-          <div className="flex items-center gap-2">
-            <Wifi className="w-4 h-4 text-green-400" />
-            <span className="text-sm text-gray-300">Room:</span>
+        <motion.div 
+          initial={{ opacity: 0, scale: 0.9 }}
+          animate={{ opacity: 1, scale: 1 }}
+          className="hidden lg:flex items-center gap-4 glass rounded-xl px-6 py-3 border border-border shadow-xl"
+        >
+          <div className="flex items-center gap-3">
+            <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse"></div>
+            <span className="text-sm font-medium text-muted-foreground">Room ID:</span>
             <Button
-              variant="outline"
+              variant="glass"
               size="sm"
               onClick={handleCopyRoomId}
-              className="font-mono text-sm"
+              className="font-mono text-sm hover:bg-primary/20 border border-primary/30"
               disabled={!roomId}
             >
               {roomId || 'Loading...'}
             </Button>
           </div>
           
-          <div className="flex items-center gap-2">
-            <Users className="w-4 h-4 text-gray-400" />
-            <Badge variant="outline" className="text-xs">
-              {connectedClients.length} {/* Current user count */}
+          <div className="w-px h-6 bg-border"></div>
+          
+          <div className="flex items-center gap-3">
+            <Users className="w-4 h-4 text-accent" />
+            <Badge variant="outline" className="bg-accent/10 border-accent/30 text-accent font-semibold">
+              {connectedClients.length} connected
             </Badge>
           </div>
           
-          {/* Detailed connection info on desktop */}
-          <ConnectionStatusIndicator showDetails={true} className="text-xs" />
-          
           {isSpatialAudioEnabled && (
-            <Badge className="text-xs bg-blue-500/20 text-blue-300 border-blue-500/30">
-              Spatial Audio
-            </Badge>
+            <>
+              <div className="w-px h-6 bg-border"></div>
+              <Badge className="bg-secondary/20 text-secondary border-secondary/30 animate-pulse-glow">
+                🎧 Spatial Audio
+              </Badge>
+            </>
           )}
-        </div>
+        </motion.div>
       )}
 
-      {/* Mobile Room Info */}
+      {/* Mobile Room Info - Simplified */}
       {roomId && (
-        <div className="flex lg:hidden items-center gap-2">
+        <motion.div 
+          initial={{ opacity: 0, scale: 0.9 }}
+          animate={{ opacity: 1, scale: 1 }}
+          className="flex lg:hidden items-center gap-2"
+        >
           <Button
-            variant="outline"
+            variant="glass"
             size="sm"
             onClick={handleCopyRoomId}
-            className="font-mono text-xs px-2"
+            className="font-mono text-xs px-3 py-2 border border-primary/30"
             disabled={!roomId}
           >
             {roomId || 'Loading...'}
           </Button>
-          <Badge variant="outline" className="text-xs">
+          <Badge variant="glow" className="text-xs">
             {connectedClients.length}
           </Badge>
-        </div>
+        </motion.div>
       )}
 
       {/* Right side - Actions (Desktop only) */}
-      <div className="hidden lg:flex items-center gap-2">
+      <div className="hidden lg:flex items-center gap-3">
         {roomId && (
-          <>
+          <motion.div
+            initial={{ opacity: 0, x: 20 }}
+            animate={{ opacity: 1, x: 0 }}
+            className="flex items-center gap-3"
+          >
             <LeaveRoomButton />
             <Button
-              variant="outline"
+              variant="glass"
               size="sm"
               onClick={handleNewRoom}
-              className="text-sm"
+              className="border border-border hover:border-primary/50"
             >
+              <Plus className="w-4 h-4 mr-2" />
               New Room
             </Button>
-          </>
+          </motion.div>
         )}
       </div>
     </div>

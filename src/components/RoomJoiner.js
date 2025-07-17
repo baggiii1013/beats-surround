@@ -146,15 +146,15 @@ export default function RoomJoiner() {
   const ConnectionIcon = connectionStatus.icon;
   
   return (
-    <div className="bg-black/40 backdrop-blur-sm border border-gray-700 rounded-lg p-4">
+    <div className="glass rounded-xl p-4 border border-border shadow-xl">
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-purple-600 rounded-lg flex items-center justify-center">
+          <div className="w-10 h-10 bg-gradient-primary rounded-xl flex items-center justify-center shadow-lg">
             <Users className="w-5 h-5 text-white" />
           </div>
           <div>
             <h2 className="text-lg font-semibold text-white">Room</h2>
-            <div className="flex items-center gap-2 text-sm text-gray-400">
+            <div className="flex items-center gap-2 text-sm text-muted-foreground">
               <ConnectionIcon className={`w-4 h-4 ${connectionStatus.color}`} />
               <span className="capitalize">{connectionStatus.status}</span>
               {isSynced && roundTripEstimate > 0 && (
@@ -168,18 +168,18 @@ export default function RoomJoiner() {
         
         <div className="flex items-center gap-2">
           <Button
-            variant="outline"
+            variant="glass"
             size="sm"
             onClick={() => setShowJoinForm(!showJoinForm)}
-            className="text-sm"
+            className="text-sm border border-border hover:border-primary/50"
           >
             Join Room
           </Button>
           <Button
-            variant="outline"
+            variant="glass"
             size="sm"
             onClick={handleCreateNewRoom}
-            className="text-sm"
+            className="text-sm border border-border hover:border-primary/50"
           >
             New Room
           </Button>
@@ -188,32 +188,32 @@ export default function RoomJoiner() {
       
       {/* Current Room Info */}
       {roomId && (
-        <div className="mb-4 p-3 bg-gray-800/50 rounded-lg">
+        <div className="mb-4 p-3 glass rounded-lg border border-border">
           <div className="flex items-center justify-between">
             <div>
-              <div className="text-sm text-gray-400 mb-1">Current Room ID</div>
+              <div className="text-sm text-muted-foreground mb-1">Current Room ID</div>
               <div className="flex items-center gap-2">
-                <code className="text-lg font-mono font-bold text-white bg-gray-700 px-2 py-1 rounded">
+                <code className="text-lg font-mono font-bold text-white glass px-2 py-1 rounded border border-primary/30">
                   {roomId}
                 </code>
                 <Button
                   variant="ghost"
                   size="sm"
                   onClick={handleCopyRoomId}
-                  className="p-2 h-8 w-8"
+                  className="p-2 h-8 w-8 hover:bg-primary/20"
                 >
                   {copied ? (
                     <Check className="w-4 h-4 text-green-400" />
                   ) : (
-                    <Copy className="w-4 h-4 text-gray-400" />
+                    <Copy className="w-4 h-4 text-muted-foreground hover:text-white" />
                   )}
                 </Button>
               </div>
             </div>
             
             <div className="text-right">
-              <div className="text-sm text-gray-400 mb-1">Connected Users</div>
-              <Badge variant="outline" className="text-sm">
+              <div className="text-sm text-muted-foreground mb-1">Connected Users</div>
+              <Badge variant="glow" className="text-sm">
                 {connectedClients.length + 1} {/* +1 for current user */}
               </Badge>
             </div>
@@ -230,15 +230,15 @@ export default function RoomJoiner() {
             exit={{ opacity: 0, height: 0 }}
             className="mb-4"
           >
-            <div className="p-3 bg-gray-800/50 rounded-lg">
-              <div className="text-sm text-gray-400 mb-2">Enter Room ID</div>
-              <div className="flex gap-2">
+            <div className="p-3 glass rounded-lg border border-border">
+              <div className="text-sm text-muted-foreground mb-2">Enter Room ID</div>
+              <div className="flex flex-col sm:flex-row gap-2">
                 <input
                   type="text"
                   value={roomIdInput}
                   onChange={(e) => setRoomIdInput(e.target.value.toUpperCase())}
                   placeholder="e.g., ABC123"
-                  className="flex-1 px-3 py-2 bg-gray-700 border border-gray-600 rounded-md text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  className="flex-1 px-3 py-2 glass border border-input-border rounded-lg text-white placeholder-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent min-w-0"
                   onKeyPress={(e) => {
                     if (e.key === 'Enter') {
                       handleJoinRoom();
@@ -249,7 +249,7 @@ export default function RoomJoiner() {
                 <Button
                   onClick={handleJoinRoom}
                   disabled={isJoining || !roomIdInput.trim()}
-                  className="px-4"
+                  className="px-4 w-full sm:w-auto flex-shrink-0"
                 >
                   {isJoining ? 'Joining...' : 'Join'}
                 </Button>
@@ -262,26 +262,26 @@ export default function RoomJoiner() {
       {/* Connected Clients List */}
       {connectedClients.length > 0 && (
         <div>
-          <div className="text-sm text-gray-400 mb-2">Connected Users</div>
+          <div className="text-sm text-muted-foreground mb-2">Connected Users</div>
           <div className="space-y-2">
             {connectedClients.map((client) => (
               <div
                 key={client.clientId}
-                className="flex items-center gap-3 p-2 bg-gray-800/30 rounded-lg"
+                className="flex items-center gap-3 p-2 glass rounded-lg border border-border"
               >
-                <div className="w-6 h-6 bg-gradient-to-br from-green-500 to-blue-600 rounded-full flex items-center justify-center">
+                <div className="w-6 h-6 bg-gradient-accent rounded-full flex items-center justify-center shadow-lg">
                   <div className="w-2 h-2 bg-white rounded-full" />
                 </div>
                 <div className="flex-1">
                   <div className="text-sm font-medium text-white">
                     {client.username || `User ${client.clientId.slice(0, 6)}`}
                   </div>
-                  <div className="text-xs text-gray-400 hidden sm:block">
+                  <div className="text-xs text-muted-foreground hidden sm:block">
                     {client.rtt > 0 && `${client.rtt}ms`}
                   </div>
                 </div>
                 <Badge
-                  variant={client.isActive ? "default" : "secondary"}
+                  variant={client.isActive ? "success" : "secondary"}
                   className="text-xs"
                 >
                   {client.isActive ? 'Active' : 'Idle'}

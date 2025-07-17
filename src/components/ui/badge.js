@@ -3,17 +3,21 @@ import { cn } from "../../lib/utils"
 
 const Badge = React.forwardRef(({ className, variant = "default", ...props }, ref) => {
   const variants = {
-    default: "border-transparent bg-primary text-primary-foreground hover:bg-primary/80",
-    secondary: "border-transparent bg-secondary text-secondary-foreground hover:bg-secondary/80",
-    destructive: "border-transparent bg-destructive text-destructive-foreground hover:bg-destructive/80",
-    outline: "text-foreground",
+    default: "border-transparent bg-gradient-primary text-white shadow-lg",
+    secondary: "border-transparent bg-gradient-secondary text-white shadow-lg",
+    destructive: "border-transparent bg-destructive text-destructive-foreground shadow-lg",
+    outline: "text-foreground border-border glass hover:glass-strong transition-all duration-200",
+    accent: "border-transparent bg-gradient-accent text-accent-foreground shadow-lg",
+    success: "border-transparent bg-success text-success-foreground shadow-lg",
+    warning: "border-transparent bg-warning text-warning-foreground shadow-lg",
+    glow: "border-primary/30 glass text-primary shadow-xl animate-pulse-glow",
   }
 
   return (
     <div
       ref={ref}
       className={cn(
-        "inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-semibold transition-colors focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2",
+        "inline-flex items-center rounded-full border px-3 py-1 text-xs font-semibold transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 backdrop-blur-sm",
         variants[variant],
         className
       )}

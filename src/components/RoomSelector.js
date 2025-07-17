@@ -83,72 +83,139 @@ export default function RoomSelector() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-900 via-black to-gray-900 flex items-center justify-center p-4">
+    <div className="min-h-screen bg-gradient-to-br from-[hsl(var(--background))] via-[hsl(var(--background-secondary))] to-[hsl(var(--background-tertiary))] flex items-center justify-center p-4 relative overflow-hidden">
+      {/* Animated background elements */}
+      <div className="absolute inset-0 overflow-hidden pointer-events-none">
+        <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-primary/10 rounded-full blur-3xl animate-float"></div>
+        <div className="absolute bottom-1/4 right-1/4 w-64 h-64 bg-secondary/10 rounded-full blur-3xl animate-float" style={{ animationDelay: '1s' }}></div>
+        <div className="absolute top-1/2 left-1/2 w-48 h-48 bg-accent/10 rounded-full blur-3xl animate-float" style={{ animationDelay: '2s' }}></div>
+      </div>
+
       <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        className="bg-black/40 backdrop-blur-sm border border-gray-700 rounded-xl p-8 max-w-md w-full"
+        initial={{ opacity: 0, y: 30, scale: 0.95 }}
+        animate={{ opacity: 1, y: 0, scale: 1 }}
+        transition={{ duration: 0.6, ease: "easeOut" }}
+        className="glass-strong rounded-2xl p-8 max-w-md w-full shadow-2xl relative z-10"
       >
         <div className="text-center mb-8">
-          <div className="w-16 h-16 bg-gradient-to-br from-blue-500 to-purple-600 rounded-xl flex items-center justify-center mx-auto mb-4">
-            <Users className="w-8 h-8 text-white" />
-          </div>
-          <h1 className="text-2xl font-bold text-white mb-2">Welcome to BeatsSurround</h1>
-          <p className="text-gray-400">Choose how you&apos;d like to get started</p>
+          <motion.div
+            initial={{ scale: 0 }}
+            animate={{ scale: 1 }}
+            transition={{ delay: 0.2, type: "spring", stiffness: 200 }}
+            className="w-20 h-20 bg-gradient-primary rounded-2xl flex items-center justify-center mx-auto mb-6 shadow-xl animate-pulse-glow"
+          >
+            <Users className="w-10 h-10 text-white" />
+          </motion.div>
+          <motion.h1 
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.3 }}
+            className="text-3xl font-bold bg-gradient-to-r from-white via-accent to-primary bg-clip-text text-transparent mb-3"
+          >
+            BeatsSurround
+          </motion.h1>
+          <motion.p 
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.4 }}
+            className="text-muted-foreground text-lg"
+          >
+            Sync your music, amplify the vibe
+          </motion.p>
         </div>
 
-        <div className="space-y-4">
+        <motion.div 
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.5 }}
+          className="space-y-6"
+        >
           {/* Create New Room */}
           <motion.div
-            whileHover={{ scale: 1.02 }}
+            whileHover={{ scale: 1.02, y: -2 }}
             whileTap={{ scale: 0.98 }}
+            transition={{ type: "spring", stiffness: 400, damping: 10 }}
           >
             <Button
               onClick={handleCreateRoom}
               disabled={isCreating || isJoining}
-              className="w-full bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700 text-white py-6 text-lg font-semibold"
+              size="lg"
+              className="w-full text-lg font-semibold h-14 shadow-xl hover:shadow-2xl"
             >
-              <Plus className="w-5 h-5 mr-2" />
-              {isCreating ? 'Creating Room...' : 'Create New Room'}
+              <Plus className="w-6 h-6 mr-3" />
+              {isCreating ? (
+                <div className="flex items-center">
+                  <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin mr-2"></div>
+                  Creating Room...
+                </div>
+              ) : (
+                'Create New Room'
+              )}
             </Button>
           </motion.div>
 
           <div className="relative">
             <div className="absolute inset-0 flex items-center">
-              <div className="w-full border-t border-gray-600"></div>
+              <div className="w-full border-t border-border"></div>
             </div>
             <div className="relative flex justify-center text-sm">
-              <span className="px-2 bg-black/40 text-gray-400">or</span>
+              <span className="px-4 glass text-muted-foreground rounded-full border border-border">or join existing</span>
             </div>
           </div>
 
           {/* Join Existing Room */}
-          <div className="space-y-3">
-            <input
-              type="text"
-              placeholder="Enter Room ID"
-              value={roomIdInput}
-              onChange={(e) => setRoomIdInput(e.target.value.toUpperCase())}
-              onKeyPress={(e) => e.key === 'Enter' && handleJoinRoom()}
-              className="w-full px-4 py-3 bg-gray-800/50 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              maxLength={6}
-              disabled={isJoining || isCreating}
-            />
-            <Button
-              onClick={handleJoinRoom}
-              disabled={!roomIdInput.trim() || isJoining || isCreating}
-              variant="outline"
-              className="w-full border-gray-600 text-gray-300 hover:bg-gray-800 py-3"
+          <div className="space-y-4">
+            <div className="relative">
+              <input
+                type="text"
+                placeholder="Enter 6-character Room ID"
+                value={roomIdInput}
+                onChange={(e) => setRoomIdInput(e.target.value.toUpperCase())}
+                onKeyPress={(e) => e.key === 'Enter' && handleJoinRoom()}
+                className="w-full px-6 py-4 glass rounded-xl text-white placeholder-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent transition-all duration-200 text-lg font-mono tracking-wider text-center"
+                maxLength={6}
+                disabled={isJoining || isCreating}
+              />
+              <div className="absolute inset-0 rounded-xl bg-gradient-to-r from-primary/20 to-secondary/20 opacity-0 hover:opacity-100 transition-opacity duration-200 pointer-events-none"></div>
+            </div>
+            <motion.div
+              whileHover={{ scale: 1.02, y: -2 }}
+              whileTap={{ scale: 0.98 }}
+              transition={{ type: "spring", stiffness: 400, damping: 10 }}
             >
-              <Users className="w-4 h-4 mr-2" />
-              {isJoining ? 'Joining...' : 'Join Room'}
-            </Button>
+              <Button
+                onClick={handleJoinRoom}
+                disabled={!roomIdInput.trim() || isJoining || isCreating}
+                variant="glass"
+                size="lg"
+                className="w-full h-14 text-lg font-semibold border-2 border-border hover:border-primary/50"
+              >
+                <Users className="w-5 h-5 mr-3" />
+                {isJoining ? (
+                  <div className="flex items-center">
+                    <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin mr-2"></div>
+                    Joining...
+                  </div>
+                ) : (
+                  'Join Room'
+                )}
+              </Button>
+            </motion.div>
           </div>
-        </div>
+        </motion.div>
 
-        <div className="mt-8 text-center text-sm text-gray-500">
-          <p>Room IDs are 6 characters long and case-insensitive</p>
-        </div>
+        <motion.div 
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ delay: 0.8 }}
+          className="mt-8 text-center"
+        >
+          <div className="flex items-center justify-center space-x-2 text-sm text-muted-foreground">
+            <div className="w-2 h-2 bg-accent rounded-full animate-pulse"></div>
+            <span>Room IDs are 6 characters, case-insensitive</span>
+            <div className="w-2 h-2 bg-primary rounded-full animate-pulse" style={{ animationDelay: '0.5s' }}></div>
+          </div>
+        </motion.div>
       </motion.div>
     </div>
   );

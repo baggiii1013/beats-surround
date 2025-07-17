@@ -26,24 +26,24 @@ export default function MobileNavigation({ activeView, onViewChange, isTablet = 
       label: 'Queue',
       onClick: () => handleViewChange('queue'),
       className: activeView === 'queue' 
-        ? 'ring-2 ring-blue-500 bg-gradient-to-br from-blue-900/40 to-blue-600/20 shadow-lg shadow-blue-500/25' 
-        : 'hover:bg-neutral-800/50 transition-colors'
+        ? 'ring-2 ring-primary bg-gradient-primary shadow-lg shadow-primary/25' 
+        : 'glass hover:glass-strong transition-all duration-200'
     },
     {
       icon: <Music size={isTablet ? 28 : 24} strokeWidth={2.5} />,
       label: 'Player',
       onClick: () => handleViewChange('player'),
       className: activeView === 'player' 
-        ? 'ring-2 ring-blue-500 bg-gradient-to-br from-blue-900/40 to-blue-600/20 shadow-lg shadow-blue-500/25' 
-        : 'hover:bg-neutral-800/50 transition-colors'
+        ? 'ring-2 ring-primary bg-gradient-primary shadow-lg shadow-primary/25' 
+        : 'glass hover:glass-strong transition-all duration-200'
     },
     {
       icon: <Users size={isTablet ? 28 : 24} strokeWidth={2.5} />,
       label: 'Room',
       onClick: () => handleViewChange('room'),
       className: activeView === 'room' 
-        ? 'ring-2 ring-blue-500 bg-gradient-to-br from-blue-900/40 to-blue-600/20 shadow-lg shadow-blue-500/25' 
-        : 'hover:bg-neutral-800/50 transition-colors'
+        ? 'ring-2 ring-primary bg-gradient-primary shadow-lg shadow-primary/25' 
+        : 'glass hover:glass-strong transition-all duration-200'
     },
   ];
 
@@ -69,7 +69,7 @@ export default function MobileNavigation({ activeView, onViewChange, isTablet = 
           panelHeight={isTablet ? 76 : 68}
           baseItemSize={isTablet ? 56 : 48}
           spring={{ mass: 0.08, stiffness: 250, damping: 18 }}
-          className="bg-black/60 backdrop-blur-xl shadow-2xl"
+          className="glass-strong border border-border/50 shadow-2xl"
         />
       </div>
     </motion.div>

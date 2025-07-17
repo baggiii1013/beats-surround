@@ -209,9 +209,9 @@ export default function Player() {
   return (
     <div className="flex-1 flex items-center justify-center p-4 lg:p-8">
       {/* Mobile Layout (Portrait) */}
-      <div className="md:hidden w-full max-w-sm">
-        <div className="w-full flex justify-center px-2 py-4">
-          <div className="w-full max-w-sm mx-auto">
+      <div className="md:hidden w-full max-w-md">
+        <div className="w-full flex justify-center py-4">
+          <div className="w-full max-w-md mx-auto px-4">
             {/* Mobile Cover Art */}
             <div className="flex justify-center mb-6 backdrop-brightness-50">
               <div className="relative">
@@ -249,12 +249,12 @@ export default function Player() {
             </div>
 
             {/* Mobile Controls */}
-            <div className="flex items-center justify-center gap-6 mb-6">
+            <div className="flex items-center justify-center gap-4 mb-6">
               <Button
                 variant="ghost"
                 size="icon"
                 className={cn(
-                  "text-gray-400 hover:text-white transition-all hover:scale-110",
+                  "text-gray-400 hover:text-white transition-all hover:scale-110 flex-shrink-0",
                   isShuffled && "text-blue-400"
                 )}
                 onClick={handleShuffle}
@@ -266,7 +266,7 @@ export default function Player() {
               <Button
                 variant="ghost"
                 size="icon"
-                className="text-gray-400 hover:text-white transition-all hover:scale-110"
+                className="text-gray-400 hover:text-white transition-all hover:scale-110 flex-shrink-0"
                 onClick={handleSkipBack}
                 disabled={isShuffled || audioSources.length <= 1}
               >
@@ -274,20 +274,20 @@ export default function Player() {
               </Button>
 
               <Button
-                className="bg-white text-black rounded-full hover:scale-110 transition-all shadow-lg w-14 h-14"
+                className="bg-white text-black rounded-full hover:scale-110 transition-all shadow-lg w-14 h-14 flex-shrink-0"
                 onClick={handlePlay}
               >
                 {isPlaying ? (
-                  <Pause className="h-6 w-6" />
+                  <Pause className="h-8 w-8" />
                 ) : (
-                  <Play className="h-6 w-6 ml-1" />
+                  <Play className="h-8 w-8 " />
                 )}
               </Button>
 
               <Button
                 variant="ghost"
                 size="icon"
-                className="text-gray-400 hover:text-white transition-all hover:scale-110"
+                className="text-gray-400 hover:text-white transition-all hover:scale-110 flex-shrink-0"
                 onClick={handleSkipForward}
                 disabled={audioSources.length <= 1}
               >
@@ -297,7 +297,7 @@ export default function Player() {
               <Button
                 variant="ghost"
                 size="icon"
-                className="text-gray-400 hover:text-white transition-all hover:scale-110"
+                className="text-gray-400 hover:text-white transition-all hover:scale-110 flex-shrink-0"
               >
                 <Repeat className="h-5 w-5 text-blue-400" />
               </Button>

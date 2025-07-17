@@ -1,24 +1,14 @@
 'use client';
 
-import dynamic from 'next/dynamic';
-import { Fragment, useEffect, useState } from 'react';
+import { useEffect } from 'react';
 import { Toaster } from 'sonner';
 import AudioInitializer from '../components/AudioInitializer';
-import AudioUploader from '../components/AudioUploader';
 import LoadingScreen from '../components/LoadingScreen';
 import ResponsiveLayout from '../components/ResponsiveLayout';
 import RoomSelector from '../components/RoomSelector';
-import SpatialAudioBackground from '../components/SpatialAudioBackground';
 import WebSocketManager from '../components/WebSocketManager';
 import usePageRefreshReconnection from '../hooks/usePageRefreshReconnection';
-import { useGlobalStore } from '../store/global';
 import { useRoomStore } from '../store/room';
-
-// Dynamic import for client-side only component
-const AudioCacheStatus = dynamic(() => import('../components/AudioCacheStatus'), {
-  ssr: false,
-  loading: () => null
-});
 
 export default function Home() {
   // Use the page refresh reconnection hook
@@ -54,20 +44,34 @@ export default function Home() {
   }
 
   return (
-    <div className="min-h-screen bg-black text-white">
-      <Toaster position="top-right" />
-      <SpatialAudioBackground />
+    <div className="min-h-screen bg-gradient-to-br from-[hsl(var(--background))] via-[hsl(var(--background-secondary))] to-[hsl(var(--background-tertiary))] text-white relative overflow-hidden">
+      {/* Animated background elements */}
+      <div className="fixed inset-0 overflow-hidden pointer-events-none">
+        <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-primary/5 rounded-full blur-3xl animate-float"></div>
+        <div className="absolute bottom-1/4 right-1/4 w-64 h-64 bg-secondary/5 rounded-full blur-3xl animate-float" style={{ animationDelay: '1s' }}></div>
+        <div className="absolute top-1/2 left-1/2 w-48 h-48 bg-accent/5 rounded-full blur-3xl animate-float" style={{ animationDelay: '2s' }}></div>
+      </div>
+      
+      <Toaster 
+        position="top-right" 
+        theme="dark"
+        toastOptions={{
+          style: {
+            background: 'hsl(var(--card))',
+            border: '1px solid hsl(var(--border))',
+            color: 'hsl(var(--foreground))',
+          },
+        }}
+      />
       
       {/* AudioInitializer handles all initialization logic and UI */}
       <AudioInitializer />
       
       <WebSocketManager />
       
-      <div className="fixed bottom-4 right-4 z-50">
-        <AudioCacheStatus />
+      <div className="relative z-10">
+        <ResponsiveLayout />
       </div>
-      
-      <ResponsiveLayout />
     </div>
   );
 }

@@ -9,6 +9,7 @@ import Player from './Player';
 import Queue from './Queue';
 import RoomInfo from './RoomInfo';
 import RoomJoiner from './RoomJoiner';
+import SpatialAudioBackground from './SpatialAudioBackground';
 import TopBar from './TopBar';
 import UserGrid from './UserGrid';
 
@@ -55,62 +56,78 @@ export default function ResponsiveLayout() {
   };
 
   if (isMobile || isTablet) {
-    // Mobile and Tablet Layout with Dock Navigation
+    // Mobile and Tablet Layout with Modern Dock Navigation
     return (
-      <div className="h-screen flex flex-col bg-gradient-to-br from-black via-gray-900 to-black">
+      <div className="h-screen flex flex-col bg-gradient-to-br from-[hsl(var(--background))] via-[hsl(var(--background-secondary))] to-[hsl(var(--background-tertiary))] relative overflow-hidden">
+        {/* Animated background elements */}
+        <div className="absolute inset-0 overflow-hidden pointer-events-none">
+          <div className="absolute top-1/6 left-1/6 w-64 h-64 bg-primary/5 rounded-full blur-3xl animate-float"></div>
+          <div className="absolute bottom-1/6 right-1/6 w-48 h-48 bg-secondary/5 rounded-full blur-3xl animate-float" style={{ animationDelay: '1s' }}></div>
+        </div>
+        
         {/* Top Navigation */}
         <TopBar />
         
         {/* Main Content Area */}
-        <div className="flex-1 relative overflow-hidden">
+        <div className="flex-1 relative overflow-hidden z-10">
           {renderMobileView()}
         </div>
         
-        {/* Dock Navigation */}
-        <MobileNavigation 
-          activeView={activeView} 
-          onViewChange={handleViewChange}
-          isTablet={isTablet}
-        />
+        {/* Enhanced Dock Navigation */}
+        <div className="relative z-20">
+          <MobileNavigation 
+            activeView={activeView} 
+            onViewChange={handleViewChange}
+            isTablet={isTablet}
+          />
+        </div>
       </div>
     );
   }
 
-  // Desktop Layout (Original)
+  // Desktop Layout (Enhanced)
   return (
-    <>
+    <div className="relative min-h-screen">
       {/* Top Navigation */}
       <TopBar />
       
       {/* Main Content */}
-      <div className="flex h-[calc(100vh-4rem)]">
+      <div className="flex h-[calc(100vh-5rem)] relative z-10">
         {/* Left Sidebar - Queue */}
-        <div className="w-1/3 border-r border-gray-700 flex flex-col">
-          <div className="p-4 border-b border-gray-700">
-            <h2 className="text-lg font-semibold text-white mb-4">Music Queue</h2>
+        <div className="w-1/3 flex flex-col">
+          <div className="glass-strong border-r border-border/50 p-6 border-b border-border/50">
+            <h2 className="text-xl font-bold mb-4 bg-gradient-to-r from-white to-accent bg-clip-text text-transparent">
+              Music Queue
+            </h2>
             <AudioUploader className="mb-4" />
           </div>
-          <div className="flex-1 overflow-y-auto p-4">
+          <div className="flex-1 glass border-r border-border/50 overflow-y-auto p-6">
             <Queue />
           </div>
         </div>
         
         {/* Center - Player */}
-        <div className="flex-1 flex flex-col">
+        <div className="flex-1 flex flex-col glass">
           <Player />
         </div>
         
         {/* Right Sidebar - Room Info, Spatial Audio & Users */}
-        <div className="w-1/3 border-l border-gray-700 flex flex-col">
-          <div className="p-4 border-b border-gray-700">
-            <RoomInfo className="mb-4" />
-            <RoomJoiner />
-          </div>
-          <div className="flex-1">
-            <UserGrid />
+        <div className="w-1/3 flex flex-col">
+          <div className="flex-1 glass border-l border-border/50 overflow-y-auto">
+            <div className="p-6 space-y-6">
+              <RoomInfo />
+              <RoomJoiner />
+              <SpatialAudioBackground />
+              <div className="glass rounded-2xl border border-border">
+                <div className="p-4 border-b border-border/50">
+                  <h3 className="text-lg font-semibold text-white">Connected Users</h3>
+                </div>
+                <UserGrid />
+              </div>
+            </div>
           </div>
         </div>
       </div>
-    </>
+    </div>
   );
 }
